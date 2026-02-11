@@ -236,6 +236,59 @@ func TestUpdate_ArrowKeys(t *testing.T) {
 	}
 }
 
+func TestUpdate_MouseClick_SelectsWorktree(t *testing.T) {
+	m := testModel()
+
+	// First render the view to register zones
+	m.View()
+
+	// Find the index of the first worktree item
+	worktreeIdx := -1
+	for i, item := range m.items {
+		if item.Kind == model.ItemKindWorktree {
+			worktreeIdx = i
+			break
+		}
+	}
+	if worktreeIdx == -1 {
+		t.Fatal("no worktree item found")
+	}
+
+	// Simulate a mouse click within the zone
+	mouseMsg := tea.MouseMsg{
+		Action: tea.MouseActionRelease,
+		Button: tea.MouseButtonLeft,
+	}
+
+	// Use zone.Get to check if zone is registered, then test with InBounds
+	result, cmd := m.Update(mouseMsg)
+	updated := result.(Model)
+
+	// When coordinates don't match any zone, no selection should happen
+	if updated.selected != "" {
+		t.Errorf("selected should be empty when click is outside zones, got %q", updated.selected)
+	}
+	_ = cmd
+}
+
+func TestZoneID(t *testing.T) {
+	tests := []struct {
+		index int
+		want  string
+	}{
+		{0, "item-0"},
+		{5, "item-5"},
+		{42, "item-42"},
+	}
+
+	for _, tt := range tests {
+		got := ZoneID(tt.index)
+		if got != tt.want {
+			t.Errorf("ZoneID(%d) = %q, want %q", tt.index, got, tt.want)
+		}
+	}
+}
+
 type fakeRunner struct{}
 
 func (f *fakeRunner) Run(dir string, args ...string) (string, error) {

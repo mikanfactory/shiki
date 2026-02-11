@@ -202,6 +202,15 @@ func TestFormatStatus_AllTypes(t *testing.T) {
 	}
 }
 
+func TestView_ShowsClickHelp(t *testing.T) {
+	m := testModel()
+	view := m.View()
+
+	if !strings.Contains(view, "click") {
+		t.Error("help text should mention 'click'")
+	}
+}
+
 func TestView_NonSelectedWorktree(t *testing.T) {
 	groups := []model.RepoGroup{
 		{
