@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -100,6 +101,177 @@ repositories: []
 	_, err := LoadFromFile(cfgPath)
 	if err == nil {
 		t.Error("expected error for empty repositories, got nil")
+	}
+}
+
+func TestDetectGitRoot_InRepo(t *testing.T) {
+	name, root, err := detectGitRoot()
+	if err != nil {
+		t.Fatalf("detectGitRoot failed in git repo: %v", err)
+	}
+	if name == "" {
+		t.Error("expected non-empty repo name")
+	}
+	if root == "" {
+		t.Error("expected non-empty repo root")
+	}
+	if filepath.Base(root) != name {
+		t.Errorf("name = %q, want %q (basename of root %q)", name, filepath.Base(root), root)
+	}
+}
+
+func TestDetectGitRoot_NotInRepo(t *testing.T) {
+	original := detectGitRootFn
+	detectGitRootFn = func() (string, string, error) {
+		return "", "", fmt.Errorf("not inside a git repository")
+	}
+	t.Cleanup(func() { detectGitRootFn = original })
+
+	_, _, err := detectGitRootFn()
+	if err == nil {
+		t.Error("expected error outside git repo, got nil")
+	}
+}
+
+func TestEnsureDefaultConfig_CreatesFile(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	original := detectGitRootFn
+	detectGitRootFn = func() (string, string, error) {
+		return "my-repo", "/home/user/my-repo", nil
+	}
+	t.Cleanup(func() { detectGitRootFn = original })
+
+	path, created, err := EnsureDefaultConfig()
+	if err != nil {
+		t.Fatalf("EnsureDefaultConfig failed: %v", err)
+	}
+	if !created {
+		t.Error("expected created=true")
+	}
+
+	wantPath := filepath.Join(tmpHome, ".config", "shiki", "config.yaml")
+	if path != wantPath {
+		t.Errorf("path = %q, want %q", path, wantPath)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading created config: %v", err)
+	}
+	content := string(data)
+	if !strings.Contains(content, "my-repo") {
+		t.Errorf("config should contain repo name, got:\n%s", content)
+	}
+	if !strings.Contains(content, "/home/user/my-repo") {
+		t.Errorf("config should contain repo path, got:\n%s", content)
+	}
+}
+
+func TestEnsureDefaultConfig_AlreadyExists(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	configDir := filepath.Join(tmpHome, ".config", "shiki")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(configDir, "config.yaml")
+	existingContent := "existing content"
+	if err := os.WriteFile(configPath, []byte(existingContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	path, created, err := EnsureDefaultConfig()
+	if err != nil {
+		t.Fatalf("EnsureDefaultConfig failed: %v", err)
+	}
+	if created {
+		t.Error("expected created=false for existing file")
+	}
+	if path != configPath {
+		t.Errorf("path = %q, want %q", path, configPath)
+	}
+
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != existingContent {
+		t.Errorf("existing file was modified: got %q, want %q", string(data), existingContent)
+	}
+}
+
+func TestEnsureDefaultConfig_NotInGitRepo(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	original := detectGitRootFn
+	detectGitRootFn = func() (string, string, error) {
+		return "", "", fmt.Errorf("not inside a git repository")
+	}
+	t.Cleanup(func() { detectGitRootFn = original })
+
+	path, created, err := EnsureDefaultConfig()
+	if err != nil {
+		t.Fatalf("EnsureDefaultConfig failed: %v", err)
+	}
+	if !created {
+		t.Error("expected created=true")
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading created config: %v", err)
+	}
+	content := string(data)
+	if !strings.Contains(content, "#") {
+		t.Errorf("config for non-git-repo should be commented out, got:\n%s", content)
+	}
+}
+
+func TestLoad_AutoCreatesConfig(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	original := detectGitRootFn
+	detectGitRootFn = func() (string, string, error) {
+		return "my-repo", "/tmp/my-repo", nil
+	}
+	t.Cleanup(func() { detectGitRootFn = original })
+
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("Load auto-create failed: %v", err)
+	}
+	if len(cfg.Repositories) != 1 {
+		t.Fatalf("expected 1 repository, got %d", len(cfg.Repositories))
+	}
+	if cfg.Repositories[0].Name != "my-repo" {
+		t.Errorf("repo name = %q, want %q", cfg.Repositories[0].Name, "my-repo")
+	}
+	if cfg.Repositories[0].Path != "/tmp/my-repo" {
+		t.Errorf("repo path = %q, want %q", cfg.Repositories[0].Path, "/tmp/my-repo")
+	}
+}
+
+func TestLoad_AutoCreatesConfig_NoGitRepo(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	original := detectGitRootFn
+	detectGitRootFn = func() (string, string, error) {
+		return "", "", fmt.Errorf("not inside a git repository")
+	}
+	t.Cleanup(func() { detectGitRootFn = original })
+
+	_, err := Load("")
+	if err == nil {
+		t.Fatal("expected error when no git repo and no config")
+	}
+	if !strings.Contains(err.Error(), "edit the config") {
+		t.Errorf("error should guide user to edit config, got: %v", err)
 	}
 }
 
