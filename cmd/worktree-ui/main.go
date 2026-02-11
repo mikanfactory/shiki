@@ -6,6 +6,7 @@ import (
 	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
+	zone "github.com/lrstanley/bubblezone"
 
 	"worktree-ui/internal/config"
 	"worktree-ui/internal/git"
@@ -13,6 +14,8 @@ import (
 )
 
 func main() {
+	zone.NewGlobal()
+
 	configPath := flag.String("config", "", "path to config file")
 	flag.Parse()
 
@@ -25,7 +28,7 @@ func main() {
 	runner := git.OSCommandRunner{}
 	m := tui.NewModel(cfg, runner)
 
-	p := tea.NewProgram(m, tea.WithAltScreen())
+	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	result, err := p.Run()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)

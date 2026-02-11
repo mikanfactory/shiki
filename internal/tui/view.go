@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	zone "github.com/lrstanley/bubblezone"
 
 	"worktree-ui/internal/model"
 )
@@ -33,13 +34,17 @@ func (m Model) View() string {
 
 	for i, item := range m.items {
 		isSelected := i == m.cursor
-		b.WriteString(renderItem(item, isSelected, m.sidebarWidth))
+		line := renderItem(item, isSelected, m.sidebarWidth)
+		if item.Selectable {
+			line = zone.Mark(ZoneID(i), line)
+		}
+		b.WriteString(line)
 		b.WriteString("\n")
 	}
 
-	b.WriteString(helpStyle.Render("q: quit  ↑↓/jk: move  enter: select"))
+	b.WriteString(helpStyle.Render("q: quit  ↑↓/jk: move  enter/click: select"))
 
-	return b.String()
+	return zone.Scan(b.String())
 }
 
 func renderItem(item model.NavigableItem, selected bool, width int) string {
@@ -76,6 +81,7 @@ func renderWorktree(item model.NavigableItem, selected bool, width int) string {
 	if maxBranchLen > 0 && lipgloss.Width(branchName) > maxBranchLen {
 		branchName = truncate(branchName, maxBranchLen)
 	}
+
 	return worktreeStyle.Render(branchName) + statusBadge
 }
 

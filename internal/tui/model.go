@@ -1,7 +1,10 @@
 package tui
 
 import (
+	"fmt"
+
 	tea "github.com/charmbracelet/bubbletea"
+	zone "github.com/lrstanley/bubblezone"
 
 	"worktree-ui/internal/git"
 	"worktree-ui/internal/model"
@@ -66,6 +69,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loading = false
 		return m, nil
 
+	case tea.MouseMsg:
+		if msg.Action == tea.MouseActionRelease && msg.Button == tea.MouseButtonLeft {
+			for i, item := range m.items {
+				if !item.Selectable {
+					continue
+				}
+				if zone.Get(ZoneID(i)).InBounds(msg) {
+					m.cursor = i
+					if item.Kind == model.ItemKindWorktree {
+						m.selected = item.WorktreePath
+						return m, tea.Quit
+					}
+					return m, nil
+				}
+			}
+		}
+
 	case tea.KeyMsg:
 		switch msg.String() {
 
@@ -88,6 +108,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+// ZoneID returns the bubblezone ID for an item at the given index.
+func ZoneID(index int) string {
+	return fmt.Sprintf("item-%d", index)
 }
 
 func fetchGitDataCmd(cfg model.Config, runner git.CommandRunner) tea.Cmd {
