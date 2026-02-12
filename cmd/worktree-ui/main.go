@@ -10,6 +10,7 @@ import (
 
 	"worktree-ui/internal/config"
 	"worktree-ui/internal/git"
+	"worktree-ui/internal/tmux"
 	"worktree-ui/internal/tui"
 )
 
@@ -35,7 +36,21 @@ func main() {
 		os.Exit(1)
 	}
 
-	if finalModel, ok := result.(tui.Model); ok && finalModel.Selected() != "" {
-		fmt.Print(finalModel.Selected())
+	finalModel, ok := result.(tui.Model)
+	if !ok || finalModel.Selected() == "" {
+		return
 	}
+
+	selected := finalModel.Selected()
+
+	if tmux.IsInsideTmux() {
+		tmuxRunner := tmux.OSRunner{}
+		if err := tmux.SelectWorktreeWindow(tmuxRunner, selected); err != nil {
+			fmt.Fprintf(os.Stderr, "tmux error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	fmt.Print(selected)
 }
