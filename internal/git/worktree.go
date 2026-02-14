@@ -87,6 +87,12 @@ func parseBlock(block string) worktreeEntry {
 	return entry
 }
 
+// AddWorktree creates a new worktree with a new branch.
+func AddWorktree(runner CommandRunner, repoPath, newPath, branch string) error {
+	_, err := runner.Run(repoPath, "worktree", "add", newPath, "-b", branch)
+	return err
+}
+
 // ToWorktreeInfo converts parsed entries to model.WorktreeInfo slices.
 func ToWorktreeInfo(entries []worktreeEntry) []model.WorktreeInfo {
 	infos := make([]model.WorktreeInfo, len(entries))

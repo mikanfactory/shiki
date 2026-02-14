@@ -139,6 +139,30 @@ func TestToWorktreeInfo(t *testing.T) {
 	}
 }
 
+func TestAddWorktree(t *testing.T) {
+	runner := FakeCommandRunner{
+		Outputs: map[string]string{
+			"/repo:[worktree add /tmp/new-worktree -b user/feature]": "",
+		},
+	}
+
+	err := AddWorktree(runner, "/repo", "/tmp/new-worktree", "user/feature")
+	if err != nil {
+		t.Fatalf("AddWorktree failed: %v", err)
+	}
+}
+
+func TestAddWorktree_Error(t *testing.T) {
+	runner := FakeCommandRunner{
+		Outputs: map[string]string{},
+	}
+
+	err := AddWorktree(runner, "/repo", "/tmp/new-worktree", "user/feature")
+	if err == nil {
+		t.Error("expected error, got nil")
+	}
+}
+
 func assertWorktree(t *testing.T, got worktreeEntry, want WorktreeResult, label string) {
 	t.Helper()
 	if got.Path != want.Path {
