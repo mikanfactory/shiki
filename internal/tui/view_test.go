@@ -50,6 +50,34 @@ func TestView_ShowsCursor(t *testing.T) {
 	}
 }
 
+func TestView_ShowsStatusBadge(t *testing.T) {
+	groups := []model.RepoGroup{
+		{
+			Name:     "repo",
+			RootPath: "/code/repo",
+			Worktrees: []model.WorktreeInfo{
+				{Path: "/code/repo", Branch: "main", Status: model.StatusInfo{Insertions: 888, Deletions: 89}},
+			},
+		},
+	}
+	items := sidebar.BuildItems(groups)
+
+	m := Model{
+		items:        items,
+		groups:       groups,
+		cursor:       FirstSelectable(items),
+		sidebarWidth: 40,
+	}
+	view := m.View()
+
+	if !strings.Contains(view, "+888") {
+		t.Errorf("view should contain '+888' insertions, got:\n%s", view)
+	}
+	if !strings.Contains(view, "-89") {
+		t.Errorf("view should contain '-89' deletions, got:\n%s", view)
+	}
+}
+
 func TestView_ShowsHelp(t *testing.T) {
 	m := testModel()
 	view := m.View()
@@ -150,6 +178,43 @@ func TestView_TruncatesLongBranch(t *testing.T) {
 	}
 	if !strings.Contains(view, "…") {
 		t.Error("truncated branch should contain ellipsis")
+	}
+}
+
+func TestFormatStatus_Empty(t *testing.T) {
+	result := FormatStatus(model.StatusInfo{})
+	if result != "" {
+		t.Errorf("empty status should return empty string, got %q", result)
+	}
+}
+
+func TestFormatStatus_InsertionsAndDeletions(t *testing.T) {
+	result := FormatStatus(model.StatusInfo{Insertions: 42, Deletions: 7})
+	if !strings.Contains(result, "+42") {
+		t.Error("should contain +42")
+	}
+	if !strings.Contains(result, "-7") {
+		t.Error("should contain -7")
+	}
+}
+
+func TestFormatStatus_InsertionsOnly(t *testing.T) {
+	result := FormatStatus(model.StatusInfo{Insertions: 10})
+	if !strings.Contains(result, "+10") {
+		t.Error("should contain +10")
+	}
+	if strings.Contains(result, "-") {
+		t.Error("should not contain deletions")
+	}
+}
+
+func TestFormatStatus_DeletionsOnly(t *testing.T) {
+	result := FormatStatus(model.StatusInfo{Deletions: 5})
+	if !strings.Contains(result, "-5") {
+		t.Error("should contain -5")
+	}
+	if strings.Contains(result, "+") {
+		t.Error("should not contain insertions")
 	}
 }
 
@@ -313,7 +378,7 @@ func TestView_NonSelectedWorktree(t *testing.T) {
 			RootPath: "/code/repo",
 			Worktrees: []model.WorktreeInfo{
 				{Path: "/code/repo", Branch: "main"},
-				{Path: "/code/repo-dev", Branch: "dev", Status: model.StatusInfo{Modified: 1}},
+				{Path: "/code/repo-dev", Branch: "dev", Status: model.StatusInfo{Insertions: 12, Deletions: 3}},
 			},
 		},
 	}
@@ -330,5 +395,61 @@ func TestView_NonSelectedWorktree(t *testing.T) {
 	// "dev" should be rendered without cursor
 	if !strings.Contains(view, "dev") {
 		t.Error("non-selected worktree should still be visible")
+	}
+}
+
+func TestRenderWorktree_WithStatus(t *testing.T) {
+	item := model.NavigableItem{
+		Kind:   model.ItemKindWorktree,
+		Label:  "feature-branch",
+		Status: model.StatusInfo{Insertions: 50, Deletions: 10},
+	}
+	result := renderWorktree(item, false, 40)
+	if strings.Contains(result, "\n") {
+		t.Error("worktree with status should render as single line")
+	}
+	if !strings.Contains(result, "feature-branch") {
+		t.Error("should contain branch name")
+	}
+	if !strings.Contains(result, "+50") {
+		t.Error("should contain insertions")
+	}
+	if !strings.Contains(result, "-10") {
+		t.Error("should contain deletions")
+	}
+}
+
+func TestRenderWorktree_SingleLine_CleanStatus(t *testing.T) {
+	item := model.NavigableItem{
+		Kind:  model.ItemKindWorktree,
+		Label: "main",
+	}
+	result := renderWorktree(item, false, 40)
+	if strings.Contains(result, "\n") {
+		t.Error("clean worktree should render as single line")
+	}
+	if !strings.Contains(result, "main") {
+		t.Error("should contain branch name")
+	}
+}
+
+func TestRenderWorktree_Selected_WithStatus(t *testing.T) {
+	item := model.NavigableItem{
+		Kind:   model.ItemKindWorktree,
+		Label:  "dev",
+		Status: model.StatusInfo{Insertions: 5, Deletions: 2},
+	}
+	result := renderWorktree(item, true, 40)
+	if strings.Contains(result, "\n") {
+		t.Error("selected worktree with status should render as single line")
+	}
+	if !strings.Contains(result, ">") {
+		t.Error("should contain cursor")
+	}
+	if !strings.Contains(result, "dev") {
+		t.Error("should contain branch name")
+	}
+	if !strings.Contains(result, "+5") {
+		t.Error("should contain insertions")
 	}
 }

@@ -13,7 +13,7 @@ func TestBuildItems_SingleRepo(t *testing.T) {
 			RootPath: "/code/myrepo",
 			Worktrees: []model.WorktreeInfo{
 				{Path: "/code/myrepo", Branch: "main"},
-				{Path: "/code/myrepo-feat", Branch: "feature-x", Status: model.StatusInfo{Modified: 2}},
+				{Path: "/code/myrepo-feat", Branch: "feature-x", Status: model.StatusInfo{Insertions: 20, Deletions: 5}},
 			},
 		},
 	}
@@ -33,8 +33,8 @@ func TestBuildItems_SingleRepo(t *testing.T) {
 		t.Errorf("items[1].WorktreePath = %q, want %q", items[1].WorktreePath, "/code/myrepo")
 	}
 	assertItem(t, items[2], model.ItemKindWorktree, "feature-x", true)
-	if items[2].Status.Modified != 2 {
-		t.Errorf("items[2].Status.Modified = %d, want 2", items[2].Status.Modified)
+	if items[2].Status.Insertions != 20 {
+		t.Errorf("items[2].Status.Insertions = %d, want 20", items[2].Status.Insertions)
 	}
 	// Add worktree
 	assertItem(t, items[3], model.ItemKindAddWorktree, "+ Add worktree", true)

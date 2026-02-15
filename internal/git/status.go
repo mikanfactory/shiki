@@ -1,47 +1,23 @@
 package git
 
 import (
-	"strings"
-
 	"worktree-ui/internal/model"
 )
 
-// GetStatus runs `git status --porcelain` and returns aggregated file counts.
-func GetStatus(runner CommandRunner, worktreePath string) (model.StatusInfo, error) {
-	out, err := runner.Run(worktreePath, "status", "--porcelain")
+const defaultBase = "origin/main"
+
+// GetBranchDiffStat runs `git diff origin/main...HEAD --numstat` and returns
+// aggregated line insertion/deletion counts for the branch.
+func GetBranchDiffStat(runner CommandRunner, worktreePath string) (model.StatusInfo, error) {
+	entries, err := GetDiffNumstat(runner, worktreePath, defaultBase)
 	if err != nil {
-		return model.StatusInfo{}, err
-	}
-
-	return parseStatusPorcelain(out), nil
-}
-
-func parseStatusPorcelain(output string) model.StatusInfo {
-	if strings.TrimSpace(output) == "" {
-		return model.StatusInfo{}
+		return model.StatusInfo{}, nil
 	}
 
 	var info model.StatusInfo
-
-	for _, line := range strings.Split(strings.TrimRight(output, "\n"), "\n") {
-		if len(line) < 2 {
-			continue
-		}
-
-		index := line[0]
-		work := line[1]
-
-		switch {
-		case index == '?' && work == '?':
-			info.Untracked++
-		case index == 'A' || index == 'R':
-			info.Added++
-		case index == 'D' || work == 'D':
-			info.Deleted++
-		case index == 'M' || work == 'M':
-			info.Modified++
-		}
+	for _, e := range entries {
+		info.Insertions += e.Additions
+		info.Deletions += e.Deletions
 	}
-
-	return info
+	return info, nil
 }

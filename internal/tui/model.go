@@ -414,7 +414,7 @@ func fetchGitDataCmd(cfg model.Config, runner git.CommandRunner) tea.Cmd {
 
 			worktrees := git.ToWorktreeInfo(entries)
 			for i := range worktrees {
-				status, _ := git.GetStatus(runner, worktrees[i].Path)
+				status, _ := git.GetBranchDiffStat(runner, worktrees[i].Path)
 				worktrees[i].Status = status
 			}
 

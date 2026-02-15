@@ -69,6 +69,7 @@ func renderItem(item model.NavigableItem, selected bool, width int) string {
 
 func renderWorktree(item model.NavigableItem, selected bool, width int) string {
 	agentIcon := AgentIcon(item.AgentStatus)
+	statusBadge := FormatStatus(item.Status)
 	branchName := item.Label
 
 	// Use inline styles to avoid PaddingLeft double-application when
@@ -76,22 +77,32 @@ func renderWorktree(item model.NavigableItem, selected bool, width int) string {
 	selectedBranchStyle := lipgloss.NewStyle().Foreground(colorAccent).Bold(true)
 	normalBranchStyle := lipgloss.NewStyle().Foreground(colorFg)
 
+	var leftPart string
 	if selected {
-		prefix := " > " + agentIcon // 1-space indent + cursor + icon
-		maxBranchLen := width - lipgloss.Width(prefix)
+		prefix := " > " + agentIcon
+		maxBranchLen := width - lipgloss.Width(prefix) - lipgloss.Width(statusBadge) - 1
 		if maxBranchLen > 0 && lipgloss.Width(branchName) > maxBranchLen {
 			branchName = truncate(branchName, maxBranchLen)
 		}
-		return selectedBranchStyle.Render(" > ") + agentIcon + selectedBranchStyle.Render(branchName)
+		leftPart = selectedBranchStyle.Render(" > ") + agentIcon + selectedBranchStyle.Render(branchName)
+	} else {
+		prefix := "   " + agentIcon
+		maxBranchLen := width - lipgloss.Width(prefix) - lipgloss.Width(statusBadge) - 1
+		if maxBranchLen > 0 && lipgloss.Width(branchName) > maxBranchLen {
+			branchName = truncate(branchName, maxBranchLen)
+		}
+		leftPart = "   " + agentIcon + normalBranchStyle.Render(branchName)
 	}
 
-	prefix := "   " + agentIcon // 3-space indent + icon
-	maxBranchLen := width - lipgloss.Width(prefix)
-	if maxBranchLen > 0 && lipgloss.Width(branchName) > maxBranchLen {
-		branchName = truncate(branchName, maxBranchLen)
+	if statusBadge == "" {
+		return leftPart
 	}
 
-	return "   " + agentIcon + normalBranchStyle.Render(branchName)
+	padding := width - lipgloss.Width(leftPart) - lipgloss.Width(statusBadge)
+	if padding < 1 {
+		padding = 1
+	}
+	return leftPart + strings.Repeat(" ", padding) + statusBadge
 }
 
 func renderAction(item model.NavigableItem, selected bool) string {

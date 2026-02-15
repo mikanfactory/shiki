@@ -1,6 +1,9 @@
 package tui
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/charmbracelet/lipgloss"
 
 	"worktree-ui/internal/model"
@@ -64,6 +67,25 @@ var (
 	colorAgentWaiting = colorActionItem // #89dceb (cyan)
 )
 
+// FormatStatus formats a StatusInfo as colored line change counts (e.g. "+888 -89").
+func FormatStatus(s model.StatusInfo) string {
+	if s.Insertions == 0 && s.Deletions == 0 {
+		return ""
+	}
+
+	addStyle := lipgloss.NewStyle().Foreground(colorGreen)
+	delStyle := lipgloss.NewStyle().Foreground(colorRed)
+
+	var parts []string
+	if s.Insertions > 0 {
+		parts = append(parts, addStyle.Render(fmt.Sprintf("+%d", s.Insertions)))
+	}
+	if s.Deletions > 0 {
+		parts = append(parts, delStyle.Render(fmt.Sprintf("-%d", s.Deletions)))
+	}
+	return strings.Join(parts, " ")
+}
+
 // AgentIcon returns a colored ● icon representing the highest-priority
 // agent state. Returns empty string when no agents are present.
 func AgentIcon(agents []model.AgentInfo) string {
@@ -94,4 +116,3 @@ func AgentIcon(agents []model.AgentInfo) string {
 
 	return lipgloss.NewStyle().Foreground(color).Render(icon) + " "
 }
-
