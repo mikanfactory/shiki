@@ -35,6 +35,23 @@ type StatusInfo struct {
 	Untracked int
 }
 
+// AgentState represents the current state of a Claude Code agent in a tmux pane.
+type AgentState int
+
+const (
+	AgentStateNone    AgentState = iota // No Claude Code detected
+	AgentStateIdle                      // Idle (prompt visible, ready for input)
+	AgentStateRunning                   // Actively executing (spinner visible)
+	AgentStateWaiting                   // Waiting for user permission/confirmation
+)
+
+// AgentInfo holds the detected status of a Claude Code instance in a single pane.
+type AgentInfo struct {
+	PaneID  string
+	State   AgentState
+	Elapsed string // e.g. "2m 30s", populated only when Running
+}
+
 // ItemKind identifies what type of navigation item this is.
 type ItemKind int
 
@@ -54,4 +71,5 @@ type NavigableItem struct {
 	WorktreePath string
 	RepoRootPath string
 	Status       StatusInfo
+	AgentStatus  []AgentInfo
 }
