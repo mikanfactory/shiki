@@ -35,7 +35,6 @@ type SessionLayout struct {
 	BottomRight1 Pane
 	Center2      Pane
 	Center3      Pane
-	TopRight2    Pane
 	BottomRight2 Pane
 	BottomRight3 Pane
 }
@@ -54,13 +53,13 @@ func parsePaneIDs(output string) []string {
 
 // buildSessionLayout constructs a SessionLayout from captured pane IDs.
 // mainPaneIDs must have exactly 3 elements (center-1, tr-1, br-1).
-// bgPaneIDs must have exactly 5 elements (center-2, center-3, tr-2, br-2, br-3).
+// bgPaneIDs must have exactly 4 elements (center-2, center-3, br-2, br-3).
 func buildSessionLayout(sessionName string, mainPaneIDs []string, bgPaneIDs []string) (SessionLayout, error) {
 	if len(mainPaneIDs) != 3 {
 		return SessionLayout{}, fmt.Errorf("expected 3 main-window panes, got %d", len(mainPaneIDs))
 	}
-	if len(bgPaneIDs) != 5 {
-		return SessionLayout{}, fmt.Errorf("expected 5 background-window panes, got %d", len(bgPaneIDs))
+	if len(bgPaneIDs) != 4 {
+		return SessionLayout{}, fmt.Errorf("expected 4 background-window panes, got %d", len(bgPaneIDs))
 	}
 
 	return SessionLayout{
@@ -70,9 +69,8 @@ func buildSessionLayout(sessionName string, mainPaneIDs []string, bgPaneIDs []st
 		BottomRight1: Pane{Area: PaneAreaBottomRight, Index: 1, PaneID: mainPaneIDs[2]},
 		Center2:      Pane{Area: PaneAreaCenter, Index: 2, PaneID: bgPaneIDs[0]},
 		Center3:      Pane{Area: PaneAreaCenter, Index: 3, PaneID: bgPaneIDs[1]},
-		TopRight2:    Pane{Area: PaneAreaTopRight, Index: 2, PaneID: bgPaneIDs[2]},
-		BottomRight2: Pane{Area: PaneAreaBottomRight, Index: 2, PaneID: bgPaneIDs[3]},
-		BottomRight3: Pane{Area: PaneAreaBottomRight, Index: 3, PaneID: bgPaneIDs[4]},
+		BottomRight2: Pane{Area: PaneAreaBottomRight, Index: 2, PaneID: bgPaneIDs[2]},
+		BottomRight3: Pane{Area: PaneAreaBottomRight, Index: 3, PaneID: bgPaneIDs[3]},
 	}, nil
 }
 
@@ -134,7 +132,7 @@ func createMainWindow(runner Runner, sessionName string) error {
 	return nil
 }
 
-// createBackgroundWindow creates the background window with 5 panes.
+// createBackgroundWindow creates the background window with 4 panes.
 func createBackgroundWindow(runner Runner, sessionName string, startDir string) error {
 	if _, err := runner.Run("new-window", "-t", sessionName, "-n", backgroundWindowName, "-c", startDir); err != nil {
 		return fmt.Errorf("creating background window: %w", err)
@@ -142,7 +140,7 @@ func createBackgroundWindow(runner Runner, sessionName string, startDir string) 
 
 	bgTarget := sessionName + ":" + backgroundWindowName
 
-	for i := 0; i < 4; i++ {
+	for i := 0; i < 3; i++ {
 		if _, err := runner.Run("split-window", "-v", "-t", bgTarget); err != nil {
 			return fmt.Errorf("creating background pane %d: %w", i+2, err)
 		}

@@ -51,7 +51,7 @@ func TestParsePaneIDs_TrailingWhitespace(t *testing.T) {
 
 func TestBuildSessionLayout_ValidInput(t *testing.T) {
 	mainIDs := []string{"%0", "%1", "%2"}
-	bgIDs := []string{"%3", "%4", "%5", "%6", "%7"}
+	bgIDs := []string{"%3", "%4", "%5", "%6"}
 
 	layout, err := buildSessionLayout("my-session", mainIDs, bgIDs)
 	if err != nil {
@@ -74,9 +74,8 @@ func TestBuildSessionLayout_ValidInput(t *testing.T) {
 		{"BottomRight1", layout.BottomRight1, PaneAreaBottomRight, 1, "%2"},
 		{"Center2", layout.Center2, PaneAreaCenter, 2, "%3"},
 		{"Center3", layout.Center3, PaneAreaCenter, 3, "%4"},
-		{"TopRight2", layout.TopRight2, PaneAreaTopRight, 2, "%5"},
-		{"BottomRight2", layout.BottomRight2, PaneAreaBottomRight, 2, "%6"},
-		{"BottomRight3", layout.BottomRight3, PaneAreaBottomRight, 3, "%7"},
+		{"BottomRight2", layout.BottomRight2, PaneAreaBottomRight, 2, "%5"},
+		{"BottomRight3", layout.BottomRight3, PaneAreaBottomRight, 3, "%6"},
 	}
 
 	for _, tt := range tests {
@@ -102,7 +101,7 @@ func TestBuildSessionLayout_WrongMainCount(t *testing.T) {
 }
 
 func TestBuildSessionLayout_WrongBgCount(t *testing.T) {
-	_, err := buildSessionLayout("s", []string{"%0", "%1", "%2"}, []string{"%3", "%4", "%5", "%6"})
+	_, err := buildSessionLayout("s", []string{"%0", "%1", "%2"}, []string{"%3", "%4", "%5"})
 	if err == nil {
 		t.Fatal("expected error for wrong background pane count")
 	}
@@ -304,9 +303,9 @@ func TestCreateBackgroundWindow_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	// 1 new-window + 4 split-window = 5 calls
-	if len(runner.Calls) != 5 {
-		t.Fatalf("expected 5 calls, got %d", len(runner.Calls))
+	// 1 new-window + 3 split-window = 4 calls
+	if len(runner.Calls) != 4 {
+		t.Fatalf("expected 4 calls, got %d", len(runner.Calls))
 	}
 }
 
@@ -351,7 +350,7 @@ func newFullSessionRunner(session string, dir string) *FakeRunner {
 			fmt.Sprintf("[list-panes -t %s:main-window -F #{pane_id}]", session):                "%0\n%1\n%2\n",
 			fmt.Sprintf("[new-window -t %s -n background-window -c %s]", session, dir):          "",
 			fmt.Sprintf("[split-window -v -t %s:background-window]", session):                   "",
-			fmt.Sprintf("[list-panes -t %s:background-window -F #{pane_id}]", session):          "%3\n%4\n%5\n%6\n%7\n",
+			fmt.Sprintf("[list-panes -t %s:background-window -F #{pane_id}]", session):          "%3\n%4\n%5\n%6\n",
 		},
 	}
 }
@@ -370,8 +369,8 @@ func TestCreateSessionLayout_Success(t *testing.T) {
 	if layout.Center1.PaneID != "%0" {
 		t.Errorf("Center1.PaneID = %q, want %%0", layout.Center1.PaneID)
 	}
-	if layout.BottomRight3.PaneID != "%7" {
-		t.Errorf("BottomRight3.PaneID = %q, want %%7", layout.BottomRight3.PaneID)
+	if layout.BottomRight3.PaneID != "%6" {
+		t.Errorf("BottomRight3.PaneID = %q, want %%6", layout.BottomRight3.PaneID)
 	}
 }
 
@@ -462,7 +461,7 @@ func TestSelectWorktreeSession_NewSession(t *testing.T) {
 			"[list-panes -t feat:main-window -F #{pane_id}]":                   "%0\n%1\n%2\n",
 			"[new-window -t feat -n background-window -c /repos/feat]":         "",
 			"[split-window -v -t feat:background-window]":                      "",
-			"[list-panes -t feat:background-window -F #{pane_id}]":             "%3\n%4\n%5\n%6\n%7\n",
+			"[list-panes -t feat:background-window -F #{pane_id}]":             "%3\n%4\n%5\n%6\n",
 			"[switch-client -t feat]":                                           "",
 			"[select-window -t feat:main-window]":                              "",
 		},
@@ -508,7 +507,7 @@ func TestSelectWorktreeSession_SwitchAfterCreateError(t *testing.T) {
 			"[list-panes -t feat:main-window -F #{pane_id}]":           "%0\n%1\n%2\n",
 			"[new-window -t feat -n background-window -c /repos/feat]": "",
 			"[split-window -v -t feat:background-window]":              "",
-			"[list-panes -t feat:background-window -F #{pane_id}]":     "%3\n%4\n%5\n%6\n%7\n",
+			"[list-panes -t feat:background-window -F #{pane_id}]":     "%3\n%4\n%5\n%6\n",
 		},
 	}
 
