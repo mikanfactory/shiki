@@ -59,31 +59,21 @@ var (
 			PaddingLeft(1)
 )
 
-// FormatStatus formats a StatusInfo as a colored badge string.
+// FormatStatus formats a StatusInfo as colored line change counts (e.g. "+888 -89").
 func FormatStatus(s model.StatusInfo) string {
-	var parts []string
-
-	modStyle := lipgloss.NewStyle().Foreground(colorYellow)
-	addStyle := lipgloss.NewStyle().Foreground(colorGreen)
-	delStyle := lipgloss.NewStyle().Foreground(colorRed)
-	dimStyle := lipgloss.NewStyle().Foreground(colorFgDim)
-
-	if s.Modified > 0 {
-		parts = append(parts, modStyle.Render(fmt.Sprintf("M%d", s.Modified)))
-	}
-	if s.Added > 0 {
-		parts = append(parts, addStyle.Render(fmt.Sprintf("+%d", s.Added)))
-	}
-	if s.Deleted > 0 {
-		parts = append(parts, delStyle.Render(fmt.Sprintf("-%d", s.Deleted)))
-	}
-	if s.Untracked > 0 {
-		parts = append(parts, dimStyle.Render(fmt.Sprintf("?%d", s.Untracked)))
-	}
-
-	if len(parts) == 0 {
+	if s.Insertions == 0 && s.Deletions == 0 {
 		return ""
 	}
 
-	return " " + dimStyle.Render("[") + strings.Join(parts, " ") + dimStyle.Render("]")
+	addStyle := lipgloss.NewStyle().Foreground(colorGreen)
+	delStyle := lipgloss.NewStyle().Foreground(colorRed)
+
+	var parts []string
+	if s.Insertions > 0 {
+		parts = append(parts, addStyle.Render(fmt.Sprintf("+%d", s.Insertions)))
+	}
+	if s.Deletions > 0 {
+		parts = append(parts, delStyle.Render(fmt.Sprintf("-%d", s.Deletions)))
+	}
+	return strings.Join(parts, " ")
 }

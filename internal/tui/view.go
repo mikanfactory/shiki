@@ -71,22 +71,32 @@ func renderWorktree(item model.NavigableItem, selected bool, width int) string {
 	statusBadge := FormatStatus(item.Status)
 	branchName := item.Label
 
+	var leftPart string
 	if selected {
 		cursor := "> "
 		maxBranchLen := width - lipgloss.Width(cursor) - lipgloss.Width(statusBadge) - 1
 		if maxBranchLen > 0 && lipgloss.Width(branchName) > maxBranchLen {
 			branchName = truncate(branchName, maxBranchLen)
 		}
-		return worktreeSelectedStyle.Render(cursor+branchName) + statusBadge
+		leftPart = worktreeSelectedStyle.Render(cursor + branchName)
+	} else {
+		indent := "   "
+		maxBranchLen := width - lipgloss.Width(indent) - lipgloss.Width(statusBadge) - 1
+		if maxBranchLen > 0 && lipgloss.Width(branchName) > maxBranchLen {
+			branchName = truncate(branchName, maxBranchLen)
+		}
+		leftPart = worktreeStyle.Render(branchName)
 	}
 
-	indent := "   "
-	maxBranchLen := width - lipgloss.Width(indent) - lipgloss.Width(statusBadge) - 1
-	if maxBranchLen > 0 && lipgloss.Width(branchName) > maxBranchLen {
-		branchName = truncate(branchName, maxBranchLen)
+	if statusBadge == "" {
+		return leftPart
 	}
 
-	return worktreeStyle.Render(branchName) + statusBadge
+	padding := width - lipgloss.Width(leftPart) - lipgloss.Width(statusBadge)
+	if padding < 1 {
+		padding = 1
+	}
+	return leftPart + strings.Repeat(" ", padding) + statusBadge
 }
 
 func renderAction(item model.NavigableItem, selected bool) string {
