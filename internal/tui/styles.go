@@ -1,13 +1,13 @@
 package tui
 
 import (
-	"fmt"
-	"strings"
-
 	"github.com/charmbracelet/lipgloss"
 
 	"worktree-ui/internal/model"
 )
+
+// Agent status icon (U+25CF Black Circle, colored per state)
+const iconAgent = "●"
 
 var (
 	colorFg         = lipgloss.Color("#cdd6f4")
@@ -57,33 +57,41 @@ var (
 	errorStyle = lipgloss.NewStyle().
 			Foreground(colorRed).
 			PaddingLeft(1)
+
+	// Agent status colors (Catppuccin-compatible)
+	colorAgentIdle    = colorGreen      // #a6e3a1
+	colorAgentRunning = colorYellow     // #f9e2af
+	colorAgentWaiting = colorActionItem // #89dceb (cyan)
 )
 
-// FormatStatus formats a StatusInfo as a colored badge string.
-func FormatStatus(s model.StatusInfo) string {
-	var parts []string
-
-	modStyle := lipgloss.NewStyle().Foreground(colorYellow)
-	addStyle := lipgloss.NewStyle().Foreground(colorGreen)
-	delStyle := lipgloss.NewStyle().Foreground(colorRed)
-	dimStyle := lipgloss.NewStyle().Foreground(colorFgDim)
-
-	if s.Modified > 0 {
-		parts = append(parts, modStyle.Render(fmt.Sprintf("M%d", s.Modified)))
-	}
-	if s.Added > 0 {
-		parts = append(parts, addStyle.Render(fmt.Sprintf("+%d", s.Added)))
-	}
-	if s.Deleted > 0 {
-		parts = append(parts, delStyle.Render(fmt.Sprintf("-%d", s.Deleted)))
-	}
-	if s.Untracked > 0 {
-		parts = append(parts, dimStyle.Render(fmt.Sprintf("?%d", s.Untracked)))
-	}
-
-	if len(parts) == 0 {
+// AgentIcon returns a colored ● icon representing the highest-priority
+// agent state. Returns empty string when no agents are present.
+func AgentIcon(agents []model.AgentInfo) string {
+	if len(agents) == 0 {
 		return ""
 	}
 
-	return " " + dimStyle.Render("[") + strings.Join(parts, " ") + dimStyle.Render("]")
+	highestState := model.AgentStateIdle
+	for _, a := range agents {
+		if a.State > highestState {
+			highestState = a.State
+		}
+	}
+
+	var color lipgloss.Color
+	var icon string
+	switch highestState {
+	case model.AgentStateRunning:
+		color = colorAgentRunning
+		icon = iconAgent
+	case model.AgentStateWaiting:
+		color = colorAgentWaiting
+		icon = iconAgent
+	default:
+		color = colorAgentIdle
+		icon = iconAgent
+	}
+
+	return lipgloss.NewStyle().Foreground(color).Render(icon) + " "
 }
+

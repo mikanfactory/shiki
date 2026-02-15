@@ -50,34 +50,6 @@ func TestView_ShowsCursor(t *testing.T) {
 	}
 }
 
-func TestView_ShowsStatusBadge(t *testing.T) {
-	groups := []model.RepoGroup{
-		{
-			Name:     "repo",
-			RootPath: "/code/repo",
-			Worktrees: []model.WorktreeInfo{
-				{Path: "/code/repo", Branch: "main", Status: model.StatusInfo{Modified: 3, Added: 1}},
-			},
-		},
-	}
-	items := sidebar.BuildItems(groups)
-
-	m := Model{
-		items:        items,
-		groups:       groups,
-		cursor:       FirstSelectable(items),
-		sidebarWidth: 40,
-	}
-	view := m.View()
-
-	if !strings.Contains(view, "M3") {
-		t.Errorf("view should contain 'M3' status badge, got:\n%s", view)
-	}
-	if !strings.Contains(view, "+1") {
-		t.Errorf("view should contain '+1' status badge, got:\n%s", view)
-	}
-}
-
 func TestView_ShowsHelp(t *testing.T) {
 	m := testModel()
 	view := m.View()
@@ -181,29 +153,6 @@ func TestView_TruncatesLongBranch(t *testing.T) {
 	}
 }
 
-func TestFormatStatus_Empty(t *testing.T) {
-	result := FormatStatus(model.StatusInfo{})
-	if result != "" {
-		t.Errorf("empty status should return empty string, got %q", result)
-	}
-}
-
-func TestFormatStatus_AllTypes(t *testing.T) {
-	result := FormatStatus(model.StatusInfo{Modified: 1, Added: 2, Deleted: 3, Untracked: 4})
-	if !strings.Contains(result, "M1") {
-		t.Error("should contain M1")
-	}
-	if !strings.Contains(result, "+2") {
-		t.Error("should contain +2")
-	}
-	if !strings.Contains(result, "-3") {
-		t.Error("should contain -3")
-	}
-	if !strings.Contains(result, "?4") {
-		t.Error("should contain ?4")
-	}
-}
-
 func TestView_ShowsClickHelp(t *testing.T) {
 	m := testModel()
 	view := m.View()
@@ -254,6 +203,106 @@ func TestView_AddRepoMode_Loading(t *testing.T) {
 
 	if !strings.Contains(view, "Validating") {
 		t.Errorf("add repo loading view should show validating, got:\n%s", view)
+	}
+}
+
+func TestAgentIcon_Empty(t *testing.T) {
+	result := AgentIcon(nil)
+	if result != "" {
+		t.Errorf("empty agents should return empty string, got %q", result)
+	}
+}
+
+func TestAgentIcon_Idle(t *testing.T) {
+	agents := []model.AgentInfo{{PaneID: "%0", State: model.AgentStateIdle}}
+	result := AgentIcon(agents)
+	if !strings.Contains(result, iconAgent) {
+		t.Errorf("idle icon should contain %q, got %q", iconAgent, result)
+	}
+}
+
+func TestAgentIcon_Running(t *testing.T) {
+	agents := []model.AgentInfo{{PaneID: "%0", State: model.AgentStateRunning, Elapsed: "2m"}}
+	result := AgentIcon(agents)
+	if !strings.Contains(result, iconAgent) {
+		t.Errorf("running icon should contain %q, got %q", iconAgent, result)
+	}
+}
+
+func TestAgentIcon_Waiting(t *testing.T) {
+	agents := []model.AgentInfo{{PaneID: "%0", State: model.AgentStateWaiting}}
+	result := AgentIcon(agents)
+	if !strings.Contains(result, iconAgent) {
+		t.Errorf("waiting icon should contain %q, got %q", iconAgent, result)
+	}
+}
+
+func TestAgentIcon_HighestPriority(t *testing.T) {
+	agents := []model.AgentInfo{
+		{PaneID: "%0", State: model.AgentStateIdle},
+		{PaneID: "%1", State: model.AgentStateRunning},
+		{PaneID: "%2", State: model.AgentStateIdle},
+	}
+	result := AgentIcon(agents)
+	if !strings.Contains(result, iconAgent) {
+		t.Errorf("should show highest priority icon (running), got %q", result)
+	}
+}
+
+func TestView_ShowsAgentIcon(t *testing.T) {
+	groups := []model.RepoGroup{
+		{
+			Name:     "repo",
+			RootPath: "/code/repo",
+			Worktrees: []model.WorktreeInfo{
+				{Path: "/code/repo", Branch: "main"},
+			},
+		},
+	}
+	items := sidebar.BuildItems(groups)
+	for i := range items {
+		if items[i].Kind == model.ItemKindWorktree {
+			items[i].AgentStatus = []model.AgentInfo{
+				{PaneID: "%0", State: model.AgentStateRunning, Elapsed: "5m"},
+			}
+		}
+	}
+
+	m := Model{
+		items:        items,
+		groups:       groups,
+		cursor:       FirstSelectable(items),
+		sidebarWidth: 60,
+	}
+	view := m.View()
+
+	if !strings.Contains(view, iconAgent) {
+		t.Errorf("view should contain agent icon, got:\n%s", view)
+	}
+}
+
+func TestView_NoAgentIconWhenNoAgents(t *testing.T) {
+	groups := []model.RepoGroup{
+		{
+			Name:     "repo",
+			RootPath: "/code/repo",
+			Worktrees: []model.WorktreeInfo{
+				{Path: "/code/repo", Branch: "main"},
+			},
+		},
+	}
+	items := sidebar.BuildItems(groups)
+
+	m := Model{
+		items:        items,
+		groups:       groups,
+		cursor:       FirstSelectable(items),
+		sidebarWidth: 40,
+	}
+	view := m.View()
+
+	if strings.Contains(view, iconAgent) {
+		t.Errorf("view should not contain agent icons when no agents, got:\n%s", view)
 	}
 }
 
