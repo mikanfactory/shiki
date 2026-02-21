@@ -10,6 +10,8 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
+	"worktree-ui/internal/branchname"
+	"worktree-ui/internal/claude"
 	"worktree-ui/internal/git"
 	"worktree-ui/internal/model"
 	"worktree-ui/internal/sidebar"
@@ -204,7 +206,7 @@ func TestNewModel(t *testing.T) {
 	}
 	runner := &fakeRunner{}
 
-	m := NewModel(cfg, runner, "/tmp/config.yaml", nil)
+	m := NewModel(cfg, runner, "/tmp/config.yaml", nil, nil, nil)
 
 	if m.sidebarWidth != 35 {
 		t.Errorf("sidebarWidth = %d, want 35", m.sidebarWidth)
@@ -225,7 +227,7 @@ func TestInit_ReturnsCmd(t *testing.T) {
 		},
 	}
 	runner := &fakeRunner{}
-	m := NewModel(cfg, runner, "", nil)
+	m := NewModel(cfg, runner, "", nil, nil, nil)
 
 	cmd := m.Init()
 	if cmd == nil {
@@ -917,6 +919,308 @@ func TestFetchAgentStatusCmd(t *testing.T) {
 	}
 	if len(statusMsg.Statuses["repo1-feat"]) != 0 {
 		t.Errorf("expected 0 agents for repo1-feat, got %d", len(statusMsg.Statuses["repo1-feat"]))
+	}
+}
+
+func TestUpdate_WorktreeAddedMsg_RegistersRename(t *testing.T) {
+	m := testModel()
+	m.config = model.Config{
+		Repositories: []model.RepositoryDef{{Name: "test", Path: "/test"}},
+	}
+	m.runner = &fakeRunner{}
+	m.branchRenames = make(map[string]model.BranchRenameInfo)
+	m.claudeReader = claude.FakeReader{}
+	m.branchNameGen = branchname.FakeGenerator{Result: "test-branch"}
+
+	msg := WorktreeAddedMsg{
+		WorktreePath: "/tmp/shikon/south-korea",
+		Branch:       "shoji/south-korea",
+		CreatedAt:    1000,
+	}
+
+	result, cmd := m.Update(msg)
+	updated := result.(Model)
+
+	if !updated.loading {
+		t.Error("loading should be true after WorktreeAddedMsg")
+	}
+	if cmd == nil {
+		t.Error("expected fetchGitDataCmd to be returned")
+	}
+
+	info, ok := updated.branchRenames["/tmp/shikon/south-korea"]
+	if !ok {
+		t.Fatal("expected branchRenames to contain the worktree path")
+	}
+	if info.Status != model.RenameStatusPending {
+		t.Errorf("status = %d, want RenameStatusPending", info.Status)
+	}
+	if info.OriginalBranch != "shoji/south-korea" {
+		t.Errorf("OriginalBranch = %q, want %q", info.OriginalBranch, "shoji/south-korea")
+	}
+}
+
+func TestUpdate_WorktreeAddedMsg_NilRenames(t *testing.T) {
+	m := testModel()
+	m.config = model.Config{
+		Repositories: []model.RepositoryDef{{Name: "test", Path: "/test"}},
+	}
+	m.runner = &fakeRunner{}
+	// branchRenames is nil (feature disabled)
+
+	msg := WorktreeAddedMsg{
+		WorktreePath: "/tmp/shikon/south-korea",
+		Branch:       "shoji/south-korea",
+		CreatedAt:    1000,
+	}
+
+	result, cmd := m.Update(msg)
+	updated := result.(Model)
+
+	if !updated.loading {
+		t.Error("loading should be true")
+	}
+	if cmd == nil {
+		t.Error("expected fetchGitDataCmd")
+	}
+	if updated.branchRenames != nil {
+		t.Error("branchRenames should remain nil when feature is disabled")
+	}
+}
+
+func TestUpdate_BranchRenameStartMsg(t *testing.T) {
+	m := testModel()
+	m.branchRenames = map[string]model.BranchRenameInfo{
+		"/tmp/worktree": {
+			Status:         model.RenameStatusPending,
+			OriginalBranch: "shoji/south-korea",
+			WorktreePath:   "/tmp/worktree",
+			CreatedAt:      1000,
+		},
+	}
+	m.branchNameGen = branchname.FakeGenerator{Result: "fix-login"}
+	m.runner = &fakeRunner{}
+
+	result, cmd := m.Update(BranchRenameStartMsg{
+		WorktreePath: "/tmp/worktree",
+		Prompt:       "fix the login redirect bug",
+		SessionID:    "sess-1",
+	})
+	updated := result.(Model)
+
+	info := updated.branchRenames["/tmp/worktree"]
+	if info.Status != model.RenameStatusDetected {
+		t.Errorf("status = %d, want RenameStatusDetected", info.Status)
+	}
+	if info.FirstPrompt != "fix the login redirect bug" {
+		t.Errorf("FirstPrompt = %q, want %q", info.FirstPrompt, "fix the login redirect bug")
+	}
+	if cmd == nil {
+		t.Error("expected renameBranchCmd to be returned")
+	}
+}
+
+func TestUpdate_BranchRenameStartMsg_AlreadyDetected(t *testing.T) {
+	m := testModel()
+	m.branchRenames = map[string]model.BranchRenameInfo{
+		"/tmp/worktree": {
+			Status: model.RenameStatusDetected,
+		},
+	}
+
+	result, cmd := m.Update(BranchRenameStartMsg{
+		WorktreePath: "/tmp/worktree",
+		Prompt:       "some prompt",
+	})
+	updated := result.(Model)
+
+	if updated.branchRenames["/tmp/worktree"].Status != model.RenameStatusDetected {
+		t.Error("status should remain Detected")
+	}
+	if cmd != nil {
+		t.Error("should not return a command for already detected rename")
+	}
+}
+
+func TestUpdate_BranchRenameResultMsg_Success(t *testing.T) {
+	m := testModel()
+	m.config = model.Config{
+		Repositories: []model.RepositoryDef{{Name: "test", Path: "/test"}},
+	}
+	m.runner = &fakeRunner{}
+	m.branchRenames = map[string]model.BranchRenameInfo{
+		"/tmp/worktree": {
+			Status:         model.RenameStatusDetected,
+			OriginalBranch: "shoji/south-korea",
+		},
+	}
+
+	result, cmd := m.Update(BranchRenameResultMsg{
+		WorktreePath: "/tmp/worktree",
+		NewBranch:    "shoji/fix-login",
+	})
+	updated := result.(Model)
+
+	info := updated.branchRenames["/tmp/worktree"]
+	if info.Status != model.RenameStatusCompleted {
+		t.Errorf("status = %d, want RenameStatusCompleted", info.Status)
+	}
+	if info.NewBranch != "shoji/fix-login" {
+		t.Errorf("NewBranch = %q, want %q", info.NewBranch, "shoji/fix-login")
+	}
+	if !updated.loading {
+		t.Error("loading should be true to refresh git data")
+	}
+	if cmd == nil {
+		t.Error("expected fetchGitDataCmd")
+	}
+}
+
+func TestUpdate_BranchRenameResultMsg_Error(t *testing.T) {
+	m := testModel()
+	m.branchRenames = map[string]model.BranchRenameInfo{
+		"/tmp/worktree": {
+			Status: model.RenameStatusDetected,
+		},
+	}
+
+	result, cmd := m.Update(BranchRenameResultMsg{
+		WorktreePath: "/tmp/worktree",
+		Err:          fmt.Errorf("LLM error"),
+	})
+	updated := result.(Model)
+
+	info := updated.branchRenames["/tmp/worktree"]
+	if info.Status != model.RenameStatusFailed {
+		t.Errorf("status = %d, want RenameStatusFailed", info.Status)
+	}
+	if cmd != nil {
+		t.Error("should not return a command on error")
+	}
+}
+
+func TestCheckPromptCmd_Found(t *testing.T) {
+	historyData := []byte(`{"display":"implement dark mode for the settings page","project":"/tmp/worktree","sessionId":"s1","timestamp":200}`)
+	reader := claude.FakeReader{Data: historyData}
+
+	cmd := checkPromptCmd(reader, "/tmp/worktree", 100)
+	msg := cmd()
+
+	renameMsg, ok := msg.(BranchRenameStartMsg)
+	if !ok {
+		t.Fatalf("expected BranchRenameStartMsg, got %T", msg)
+	}
+	if renameMsg.Prompt != "implement dark mode for the settings page" {
+		t.Errorf("Prompt = %q, want %q", renameMsg.Prompt, "implement dark mode for the settings page")
+	}
+	if renameMsg.SessionID != "s1" {
+		t.Errorf("SessionID = %q, want %q", renameMsg.SessionID, "s1")
+	}
+}
+
+func TestCheckPromptCmd_NotFound(t *testing.T) {
+	historyData := []byte(`{"display":"other prompt","project":"/other/path","sessionId":"s1","timestamp":200}`)
+	reader := claude.FakeReader{Data: historyData}
+
+	cmd := checkPromptCmd(reader, "/tmp/worktree", 100)
+	msg := cmd()
+
+	if msg != nil {
+		t.Errorf("expected nil msg, got %T", msg)
+	}
+}
+
+func TestCheckPromptCmd_ReadError(t *testing.T) {
+	reader := claude.FakeReader{Err: fmt.Errorf("file not found")}
+
+	cmd := checkPromptCmd(reader, "/tmp/worktree", 100)
+	msg := cmd()
+
+	if msg != nil {
+		t.Errorf("expected nil msg on read error, got %T", msg)
+	}
+}
+
+func TestRenameBranchCmd_Success(t *testing.T) {
+	gen := branchname.FakeGenerator{Result: "fix-login-redirect"}
+	runner := git.FakeCommandRunner{
+		Outputs: map[string]string{
+			"/tmp/worktree:[branch -m shoji/south-korea shoji/fix-login-redirect]": "",
+		},
+	}
+
+	cmd := renameBranchCmd(gen, runner, "/tmp/worktree", "shoji/south-korea", "fix the login redirect bug")
+	msg := cmd()
+
+	resultMsg, ok := msg.(BranchRenameResultMsg)
+	if !ok {
+		t.Fatalf("expected BranchRenameResultMsg, got %T", msg)
+	}
+	if resultMsg.Err != nil {
+		t.Fatalf("unexpected error: %v", resultMsg.Err)
+	}
+	if resultMsg.NewBranch != "shoji/fix-login-redirect" {
+		t.Errorf("NewBranch = %q, want %q", resultMsg.NewBranch, "shoji/fix-login-redirect")
+	}
+}
+
+func TestRenameBranchCmd_LLMError(t *testing.T) {
+	gen := branchname.FakeGenerator{Err: fmt.Errorf("api timeout")}
+	runner := git.FakeCommandRunner{}
+
+	cmd := renameBranchCmd(gen, runner, "/tmp/worktree", "shoji/south-korea", "some prompt")
+	msg := cmd()
+
+	resultMsg, ok := msg.(BranchRenameResultMsg)
+	if !ok {
+		t.Fatalf("expected BranchRenameResultMsg, got %T", msg)
+	}
+	if resultMsg.Err == nil {
+		t.Error("expected error")
+	}
+}
+
+func TestRenameBranchCmd_EmptyName(t *testing.T) {
+	gen := branchname.FakeGenerator{Result: ""}
+	runner := git.FakeCommandRunner{}
+
+	cmd := renameBranchCmd(gen, runner, "/tmp/worktree", "shoji/south-korea", "some prompt")
+	msg := cmd()
+
+	resultMsg, ok := msg.(BranchRenameResultMsg)
+	if !ok {
+		t.Fatalf("expected BranchRenameResultMsg, got %T", msg)
+	}
+	if resultMsg.Err == nil {
+		t.Error("expected error for empty branch name")
+	}
+}
+
+func TestRenameTimeout(t *testing.T) {
+	m := testModel()
+	m.branchRenames = map[string]model.BranchRenameInfo{
+		"/tmp/old-worktree": {
+			Status:    model.RenameStatusPending,
+			CreatedAt: 0, // very old timestamp
+		},
+	}
+
+	result, _ := m.Update(AgentStatusMsg{Statuses: map[string][]model.AgentInfo{}})
+	updated := result.(Model)
+
+	info := updated.branchRenames["/tmp/old-worktree"]
+	if info.Status != model.RenameStatusSkipped {
+		t.Errorf("status = %d, want RenameStatusSkipped", info.Status)
+	}
+}
+
+func TestFeatureDisabled_NilDeps(t *testing.T) {
+	cfg := model.Config{SidebarWidth: 30}
+	runner := &fakeRunner{}
+	m := NewModel(cfg, runner, "", nil, nil, nil)
+
+	if m.branchRenames != nil {
+		t.Error("branchRenames should be nil when feature is disabled")
 	}
 }
 

@@ -12,6 +12,8 @@ import (
 	zone "github.com/lrstanley/bubblezone"
 
 	"worktree-ui/internal/agent"
+	"worktree-ui/internal/branchname"
+	"worktree-ui/internal/claude"
 	"worktree-ui/internal/config"
 	"worktree-ui/internal/git"
 	"worktree-ui/internal/model"
@@ -30,7 +32,25 @@ type GitDataErrMsg struct {
 }
 
 // WorktreeAddedMsg is sent when a new worktree has been created.
-type WorktreeAddedMsg struct{}
+type WorktreeAddedMsg struct {
+	WorktreePath string
+	Branch       string
+	CreatedAt    int64 // Unix milliseconds
+}
+
+// BranchRenameStartMsg indicates a first prompt was detected for a worktree.
+type BranchRenameStartMsg struct {
+	WorktreePath string
+	Prompt       string
+	SessionID    string
+}
+
+// BranchRenameResultMsg carries the result of the LLM + git branch rename.
+type BranchRenameResultMsg struct {
+	WorktreePath string
+	NewBranch    string
+	Err          error
+}
 
 // WorktreeAddErrMsg is sent when worktree creation fails.
 type WorktreeAddErrMsg struct {
@@ -67,41 +87,56 @@ type RepoAddErrMsg struct {
 // agentPollInterval is how often we poll tmux for Claude Code agent status.
 const agentPollInterval = 2 * time.Second
 
+// renameTimeoutMs is how long to wait for a prompt before giving up (10 minutes).
+const renameTimeoutMs = 10 * 60 * 1000
+
 // Model is the BubbleTea model for the sidebar.
 type Model struct {
-	items        []model.NavigableItem
-	groups       []model.RepoGroup
-	cursor       int
-	sidebarWidth int
-	selected     string
-	quitting     bool
-	err          error
-	config       model.Config
-	runner       git.CommandRunner
-	loading      bool
-	addingRepo   bool
-	textInput    textinput.Model
-	configPath   string
-	tmuxRunner   tmux.Runner
-	agentStatus  map[string][]model.AgentInfo
+	items         []model.NavigableItem
+	groups        []model.RepoGroup
+	cursor        int
+	sidebarWidth  int
+	selected      string
+	quitting      bool
+	err           error
+	config        model.Config
+	runner        git.CommandRunner
+	loading       bool
+	addingRepo    bool
+	textInput     textinput.Model
+	configPath    string
+	tmuxRunner    tmux.Runner
+	agentStatus   map[string][]model.AgentInfo
+	branchRenames map[string]model.BranchRenameInfo
+	claudeReader  claude.Reader
+	branchNameGen branchname.Generator
 }
 
 // NewModel creates a new TUI model.
 // tmuxRunner may be nil when running outside tmux (agent polling is skipped).
-func NewModel(cfg model.Config, runner git.CommandRunner, configPath string, tmuxRunner tmux.Runner) Model {
+// claudeReader and branchNameGen may be nil to disable LLM branch naming.
+func NewModel(cfg model.Config, runner git.CommandRunner, configPath string, tmuxRunner tmux.Runner, claudeReader claude.Reader, branchNameGen branchname.Generator) Model {
 	ti := textinput.New()
 	ti.Placeholder = "/path/to/repository"
 	ti.CharLimit = 256
 	ti.Width = 50
 
+	var renames map[string]model.BranchRenameInfo
+	if claudeReader != nil && branchNameGen != nil {
+		renames = make(map[string]model.BranchRenameInfo)
+	}
+
 	return Model{
-		sidebarWidth: cfg.SidebarWidth,
-		config:       cfg,
-		runner:       runner,
-		loading:      true,
-		configPath:   configPath,
-		textInput:    ti,
-		tmuxRunner:   tmuxRunner,
+		sidebarWidth:  cfg.SidebarWidth,
+		config:        cfg,
+		runner:        runner,
+		loading:       true,
+		configPath:    configPath,
+		textInput:     ti,
+		tmuxRunner:    tmuxRunner,
+		branchRenames: renames,
+		claudeReader:  claudeReader,
+		branchNameGen: branchNameGen,
 	}
 }
 
@@ -143,7 +178,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.items[i].AgentStatus = m.agentStatus[sessionName]
 			}
 		}
-		return m, agentTickCmd()
+
+		var cmds []tea.Cmd
+		cmds = append(cmds, agentTickCmd())
+
+		now := time.Now().UnixMilli()
+		for path, info := range m.branchRenames {
+			if info.Status != model.RenameStatusPending {
+				continue
+			}
+			if now-info.CreatedAt > renameTimeoutMs {
+				info.Status = model.RenameStatusSkipped
+				m.branchRenames[path] = info
+				continue
+			}
+			cmds = append(cmds, checkPromptCmd(m.claudeReader, path, info.CreatedAt))
+		}
+
+		return m, tea.Batch(cmds...)
 
 	case GitDataErrMsg:
 		m.err = msg.Err
@@ -152,7 +204,41 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case WorktreeAddedMsg:
 		m.loading = true
+		if m.branchRenames != nil && msg.WorktreePath != "" {
+			m.branchRenames[msg.WorktreePath] = model.BranchRenameInfo{
+				Status:         model.RenameStatusPending,
+				OriginalBranch: msg.Branch,
+				WorktreePath:   msg.WorktreePath,
+				CreatedAt:      msg.CreatedAt,
+			}
+		}
 		return m, fetchGitDataCmd(m.config, m.runner)
+
+	case BranchRenameStartMsg:
+		if info, ok := m.branchRenames[msg.WorktreePath]; ok && info.Status == model.RenameStatusPending {
+			info.Status = model.RenameStatusDetected
+			info.FirstPrompt = msg.Prompt
+			info.SessionID = msg.SessionID
+			m.branchRenames[msg.WorktreePath] = info
+			return m, renameBranchCmd(m.branchNameGen, m.runner, msg.WorktreePath, info.OriginalBranch, msg.Prompt)
+		}
+		return m, nil
+
+	case BranchRenameResultMsg:
+		if info, ok := m.branchRenames[msg.WorktreePath]; ok {
+			if msg.Err != nil {
+				info.Status = model.RenameStatusFailed
+			} else {
+				info.Status = model.RenameStatusCompleted
+				info.NewBranch = msg.NewBranch
+			}
+			m.branchRenames[msg.WorktreePath] = info
+		}
+		if msg.Err == nil {
+			m.loading = true
+			return m, fetchGitDataCmd(m.config, m.runner)
+		}
+		return m, nil
 
 	case WorktreeAddErrMsg:
 		m.err = msg.Err
@@ -327,12 +413,65 @@ func addWorktreeCmd(runner git.CommandRunner, repoPath, basePath string) tea.Cmd
 		slug := git.Slugify(country)
 		branch := userName + "/" + slug
 		newPath := filepath.Join(basePath, slug)
+		createdAt := time.Now().UnixMilli()
 
 		if err := git.AddWorktree(runner, repoPath, newPath, branch); err != nil {
 			return WorktreeAddErrMsg{Err: err}
 		}
 
-		return WorktreeAddedMsg{}
+		return WorktreeAddedMsg{
+			WorktreePath: newPath,
+			Branch:       branch,
+			CreatedAt:    createdAt,
+		}
+	}
+}
+
+func checkPromptCmd(reader claude.Reader, worktreePath string, createdAt int64) tea.Cmd {
+	return func() tea.Msg {
+		data, err := reader.ReadHistoryFile()
+		if err != nil {
+			return nil
+		}
+		entries, err := claude.ParseHistory(data)
+		if err != nil {
+			return nil
+		}
+		prompt, sessionID, found := claude.FindFirstPrompt(entries, worktreePath, createdAt)
+		if !found {
+			return nil
+		}
+		return BranchRenameStartMsg{
+			WorktreePath: worktreePath,
+			Prompt:       prompt,
+			SessionID:    sessionID,
+		}
+	}
+}
+
+func renameBranchCmd(gen branchname.Generator, runner git.CommandRunner, worktreePath, originalBranch, prompt string) tea.Cmd {
+	return func() tea.Msg {
+		name, err := gen.GenerateBranchName(prompt)
+		if err != nil {
+			return BranchRenameResultMsg{WorktreePath: worktreePath, Err: err}
+		}
+
+		sanitized := branchname.SanitizeBranchName(name)
+		if sanitized == "" {
+			return BranchRenameResultMsg{WorktreePath: worktreePath, Err: fmt.Errorf("generated branch name is empty")}
+		}
+
+		// Preserve username prefix: "shoji/south-korea" -> "shoji/fix-login"
+		newBranch := sanitized
+		if parts := strings.SplitN(originalBranch, "/", 2); len(parts) == 2 {
+			newBranch = parts[0] + "/" + sanitized
+		}
+
+		if err := git.RenameBranch(runner, worktreePath, originalBranch, newBranch); err != nil {
+			return BranchRenameResultMsg{WorktreePath: worktreePath, Err: err}
+		}
+
+		return BranchRenameResultMsg{WorktreePath: worktreePath, NewBranch: newBranch}
 	}
 }
 
