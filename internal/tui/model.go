@@ -84,6 +84,14 @@ type RepoAddErrMsg struct {
 	Err error
 }
 
+// WorktreeArchivedMsg is sent when a worktree has been successfully archived.
+type WorktreeArchivedMsg struct{}
+
+// WorktreeArchiveErrMsg is sent when worktree archiving fails.
+type WorktreeArchiveErrMsg struct {
+	Err error
+}
+
 // agentPollInterval is how often we poll tmux for Claude Code agent status.
 const agentPollInterval = 2 * time.Second
 
@@ -92,24 +100,27 @@ const renameTimeoutMs = 10 * 60 * 1000
 
 // Model is the BubbleTea model for the sidebar.
 type Model struct {
-	items         []model.NavigableItem
-	groups        []model.RepoGroup
-	cursor        int
-	sidebarWidth  int
-	selected      string
-	quitting      bool
-	err           error
-	config        model.Config
-	runner        git.CommandRunner
-	loading       bool
-	addingRepo    bool
-	textInput     textinput.Model
-	configPath    string
-	tmuxRunner    tmux.Runner
-	agentStatus   map[string][]model.AgentInfo
-	branchRenames map[string]model.BranchRenameInfo
-	claudeReader  claude.Reader
-	branchNameGen branchname.Generator
+	items             []model.NavigableItem
+	groups            []model.RepoGroup
+	cursor            int
+	sidebarWidth      int
+	selected          string
+	selectedRepoPath  string
+	quitting          bool
+	err               error
+	config            model.Config
+	runner            git.CommandRunner
+	loading           bool
+	addingRepo        bool
+	textInput         textinput.Model
+	configPath        string
+	tmuxRunner        tmux.Runner
+	agentStatus       map[string][]model.AgentInfo
+	branchRenames     map[string]model.BranchRenameInfo
+	claudeReader      claude.Reader
+	branchNameGen     branchname.Generator
+	confirmingArchive bool
+	archiveTarget     int
 }
 
 // NewModel creates a new TUI model.
@@ -145,6 +156,11 @@ func (m Model) Selected() string {
 	return m.selected
 }
 
+// SelectedRepoPath returns the repository root path for the selected worktree.
+func (m Model) SelectedRepoPath() string {
+	return m.selectedRepoPath
+}
+
 func (m Model) Init() tea.Cmd {
 	return fetchGitDataCmd(m.config, m.runner)
 }
@@ -153,6 +169,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Handle add-repo input mode
 	if m.addingRepo {
 		return m.updateAddRepoMode(msg)
+	}
+
+	// Handle archive confirmation mode
+	if m.confirmingArchive {
+		return m.updateConfirmArchiveMode(msg)
 	}
 
 	switch msg := msg.(type) {
@@ -245,6 +266,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loading = false
 		return m, nil
 
+	case WorktreeArchivedMsg:
+		m.loading = true
+		m.confirmingArchive = false
+		return m, fetchGitDataCmd(m.config, m.runner)
+
+	case WorktreeArchiveErrMsg:
+		m.err = msg.Err
+		m.loading = false
+		m.confirmingArchive = false
+		return m, nil
+
 	case RepoValidatedMsg:
 		m.loading = true
 		return m, addRepoToConfigCmd(m.configPath, msg.Name, msg.Path)
@@ -284,6 +316,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.cursor = i
 					if item.Kind == model.ItemKindWorktree {
 						m.selected = item.WorktreePath
+						m.selectedRepoPath = item.RepoRootPath
 						return m, tea.Quit
 					}
 					if item.Kind == model.ItemKindAddWorktree {
@@ -314,11 +347,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "down", "j":
 			m.cursor = NextSelectable(m.items, m.cursor)
 
+		case "d":
+			if m.cursor < len(m.items) {
+				item := m.items[m.cursor]
+				if item.Kind == model.ItemKindWorktree && !item.IsBare {
+					m.confirmingArchive = true
+					m.archiveTarget = m.cursor
+					m.err = nil
+					return m, nil
+				}
+			}
+
 		case "enter":
 			if m.cursor < len(m.items) {
 				item := m.items[m.cursor]
 				if item.Kind == model.ItemKindWorktree {
 					m.selected = item.WorktreePath
+					m.selectedRepoPath = item.RepoRootPath
 					return m, tea.Quit
 				}
 				if item.Kind == model.ItemKindAddWorktree {
@@ -400,6 +445,48 @@ func (m Model) updateAddRepoMode(msg tea.Msg) (tea.Model, tea.Cmd) {
 // ZoneID returns the bubblezone ID for an item at the given index.
 func ZoneID(index int) string {
 	return fmt.Sprintf("item-%d", index)
+}
+
+func (m Model) updateConfirmArchiveMode(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.Type {
+		case tea.KeyEscape:
+			m.confirmingArchive = false
+			m.err = nil
+			return m, nil
+		case tea.KeyEnter:
+			item := m.items[m.archiveTarget]
+			m.loading = true
+			m.err = nil
+			return m, archiveWorktreeCmd(m.runner, item.RepoRootPath, item.WorktreePath)
+		case tea.KeyCtrlC:
+			m.quitting = true
+			return m, tea.Quit
+		}
+
+	case WorktreeArchivedMsg:
+		m.loading = true
+		m.confirmingArchive = false
+		return m, fetchGitDataCmd(m.config, m.runner)
+
+	case WorktreeArchiveErrMsg:
+		m.err = msg.Err
+		m.loading = false
+		m.confirmingArchive = false
+		return m, nil
+	}
+
+	return m, nil
+}
+
+func archiveWorktreeCmd(runner git.CommandRunner, repoRootPath, worktreePath string) tea.Cmd {
+	return func() tea.Msg {
+		if err := git.RemoveWorktree(runner, repoRootPath, worktreePath); err != nil {
+			return WorktreeArchiveErrMsg{Err: err}
+		}
+		return WorktreeArchivedMsg{}
+	}
 }
 
 func addWorktreeCmd(runner git.CommandRunner, repoPath, basePath string) tea.Cmd {

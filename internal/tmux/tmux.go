@@ -51,6 +51,16 @@ func SelectWorktreeWindow(runner Runner, worktreePath string) error {
 	return CreateWindow(runner, windowName, worktreePath)
 }
 
+// SendKeys sends a command string to the given pane target via tmux send-keys.
+// The target should be a pane ID (e.g., "%2") or a session:window.pane reference.
+func SendKeys(runner Runner, target string, command string) error {
+	_, err := runner.Run("send-keys", "-t", target, command, "Enter")
+	if err != nil {
+		return fmt.Errorf("sending keys to %s: %w", target, err)
+	}
+	return nil
+}
+
 // parseWindowList parses `tmux list-windows` output and returns the window index
 // for the window matching the given name, or empty string if not found.
 func parseWindowList(output string, windowName string) string {

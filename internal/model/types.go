@@ -9,8 +9,10 @@ type Config struct {
 
 // RepositoryDef represents a repository entry from config.
 type RepositoryDef struct {
-	Name string `yaml:"name"`
-	Path string `yaml:"path"`
+	Name           string   `yaml:"name"`
+	Path           string   `yaml:"path"`
+	StartupCommand string   `yaml:"startup_command,omitempty"`
+	RbCommands     []string `yaml:"rb_commands,omitempty"`
 }
 
 // RepoGroup represents a repository and all its discovered worktrees.
@@ -25,6 +27,7 @@ type WorktreeInfo struct {
 	Path   string
 	Branch string
 	Status StatusInfo
+	IsBare bool
 }
 
 // StatusInfo holds the aggregated line change counts for a worktree.
@@ -92,4 +95,5 @@ type NavigableItem struct {
 	RepoRootPath string
 	Status       StatusInfo
 	AgentStatus  []AgentInfo
+	IsBare       bool
 }

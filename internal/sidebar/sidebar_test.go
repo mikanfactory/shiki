@@ -32,7 +32,13 @@ func TestBuildItems_SingleRepo(t *testing.T) {
 	if items[1].WorktreePath != "/code/myrepo" {
 		t.Errorf("items[1].WorktreePath = %q, want %q", items[1].WorktreePath, "/code/myrepo")
 	}
+	if items[1].RepoRootPath != "/code/myrepo" {
+		t.Errorf("items[1].RepoRootPath = %q, want %q", items[1].RepoRootPath, "/code/myrepo")
+	}
 	assertItem(t, items[2], model.ItemKindWorktree, "feature-x", true)
+	if items[2].RepoRootPath != "/code/myrepo" {
+		t.Errorf("items[2].RepoRootPath = %q, want %q", items[2].RepoRootPath, "/code/myrepo")
+	}
 	if items[2].Status.Insertions != 20 {
 		t.Errorf("items[2].Status.Insertions = %d, want 20", items[2].Status.Insertions)
 	}
@@ -117,6 +123,52 @@ func TestBuildItems_RepoWithNoWorktrees(t *testing.T) {
 		t.Errorf("items[1].RepoRootPath = %q, want %q", items[1].RepoRootPath, "/code/empty-repo")
 	}
 	assertItem(t, items[2], model.ItemKindAddRepo, "+ Add repository", true)
+}
+
+func TestBuildItems_IsBare(t *testing.T) {
+	groups := []model.RepoGroup{
+		{
+			Name:     "repo",
+			RootPath: "/code/repo",
+			Worktrees: []model.WorktreeInfo{
+				{Path: "/code/repo", Branch: "main", IsBare: true},
+				{Path: "/code/repo-feat", Branch: "feat", IsBare: false},
+			},
+		},
+	}
+
+	items := BuildItems(groups)
+
+	// items[0] = header, items[1] = bare worktree, items[2] = normal worktree
+	if !items[1].IsBare {
+		t.Error("items[1].IsBare should be true for bare worktree")
+	}
+	if items[2].IsBare {
+		t.Error("items[2].IsBare should be false for normal worktree")
+	}
+}
+
+func TestBuildItems_RepoRootPath_OnWorktree(t *testing.T) {
+	groups := []model.RepoGroup{
+		{
+			Name:     "repo",
+			RootPath: "/code/repo",
+			Worktrees: []model.WorktreeInfo{
+				{Path: "/code/repo", Branch: "main"},
+				{Path: "/code/repo-feat", Branch: "feat"},
+			},
+		},
+	}
+
+	items := BuildItems(groups)
+
+	// items[1] and items[2] are worktrees
+	if items[1].RepoRootPath != "/code/repo" {
+		t.Errorf("items[1].RepoRootPath = %q, want %q", items[1].RepoRootPath, "/code/repo")
+	}
+	if items[2].RepoRootPath != "/code/repo" {
+		t.Errorf("items[2].RepoRootPath = %q, want %q", items[2].RepoRootPath, "/code/repo")
+	}
 }
 
 func assertItem(t *testing.T, item model.NavigableItem, kind model.ItemKind, label string, selectable bool) {

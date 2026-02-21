@@ -402,6 +402,98 @@ func TestAppendRepository_FileNotFound(t *testing.T) {
 	}
 }
 
+func TestLoadFromFile_WithCommands(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+
+	content := `repositories:
+  - name: myrepo
+    path: /home/user/myrepo
+    startup_command: "npm run dev"
+    rb_commands:
+      - "npm test"
+      - "npm run lint"
+      - "npm run build"
+`
+	if err := os.WriteFile(cfgPath, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := LoadFromFile(cfgPath)
+	if err != nil {
+		t.Fatalf("LoadFromFile failed: %v", err)
+	}
+
+	repo := cfg.Repositories[0]
+	if repo.StartupCommand != "npm run dev" {
+		t.Errorf("StartupCommand = %q, want %q", repo.StartupCommand, "npm run dev")
+	}
+	if len(repo.RbCommands) != 3 {
+		t.Fatalf("len(RbCommands) = %d, want 3", len(repo.RbCommands))
+	}
+	if repo.RbCommands[0] != "npm test" {
+		t.Errorf("RbCommands[0] = %q, want %q", repo.RbCommands[0], "npm test")
+	}
+	if repo.RbCommands[1] != "npm run lint" {
+		t.Errorf("RbCommands[1] = %q, want %q", repo.RbCommands[1], "npm run lint")
+	}
+	if repo.RbCommands[2] != "npm run build" {
+		t.Errorf("RbCommands[2] = %q, want %q", repo.RbCommands[2], "npm run build")
+	}
+}
+
+func TestLoadFromFile_RbCommandsExceedsMax(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+
+	content := `repositories:
+  - name: myrepo
+    path: /home/user/myrepo
+    rb_commands:
+      - "cmd1"
+      - "cmd2"
+      - "cmd3"
+      - "cmd4"
+`
+	if err := os.WriteFile(cfgPath, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := LoadFromFile(cfgPath)
+	if err == nil {
+		t.Fatal("expected error for rb_commands exceeding max, got nil")
+	}
+	if !strings.Contains(err.Error(), "rb_commands") {
+		t.Errorf("error should mention rb_commands, got: %v", err)
+	}
+}
+
+func TestLoadFromFile_WithoutCommands_BackwardCompat(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+
+	content := `repositories:
+  - name: myrepo
+    path: /home/user/myrepo
+`
+	if err := os.WriteFile(cfgPath, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := LoadFromFile(cfgPath)
+	if err != nil {
+		t.Fatalf("LoadFromFile failed: %v", err)
+	}
+
+	repo := cfg.Repositories[0]
+	if repo.StartupCommand != "" {
+		t.Errorf("StartupCommand = %q, want empty", repo.StartupCommand)
+	}
+	if repo.RbCommands != nil {
+		t.Errorf("RbCommands = %v, want nil", repo.RbCommands)
+	}
+}
+
 func TestLoad(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.yaml")
@@ -433,7 +525,10 @@ repositories:
 	if len(cfg.Repositories) != len(want.Repositories) {
 		t.Fatalf("len(Repositories) = %d, want %d", len(cfg.Repositories), len(want.Repositories))
 	}
-	if cfg.Repositories[0] != want.Repositories[0] {
-		t.Errorf("Repositories[0] = %+v, want %+v", cfg.Repositories[0], want.Repositories[0])
+	if cfg.Repositories[0].Name != want.Repositories[0].Name {
+		t.Errorf("Repositories[0].Name = %q, want %q", cfg.Repositories[0].Name, want.Repositories[0].Name)
+	}
+	if cfg.Repositories[0].Path != want.Repositories[0].Path {
+		t.Errorf("Repositories[0].Path = %q, want %q", cfg.Repositories[0].Path, want.Repositories[0].Path)
 	}
 }

@@ -14,6 +14,9 @@ import (
 
 const DefaultSidebarWidth = 30
 
+// MaxRbCommands is the maximum number of rb_commands per repository.
+const MaxRbCommands = 3
+
 // LoadFromFile reads and parses a YAML config file.
 func LoadFromFile(path string) (model.Config, error) {
 	data, err := os.ReadFile(path)
@@ -36,6 +39,15 @@ func LoadFromFile(path string) (model.Config, error) {
 			return model.Config{}, fmt.Errorf("getting home directory: %w", err)
 		}
 		cfg.WorktreeBasePath = filepath.Join(home, "shikon")
+	}
+
+	for _, repo := range cfg.Repositories {
+		if len(repo.RbCommands) > MaxRbCommands {
+			return model.Config{}, fmt.Errorf(
+				"repository %q: rb_commands has %d entries, max is %d",
+				repo.Name, len(repo.RbCommands), MaxRbCommands,
+			)
+		}
 	}
 
 	if len(cfg.Repositories) == 0 {

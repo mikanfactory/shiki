@@ -99,6 +99,12 @@ func RenameBranch(runner CommandRunner, worktreePath, oldBranch, newBranch strin
 	return err
 }
 
+// RemoveWorktree removes an existing worktree.
+func RemoveWorktree(runner CommandRunner, repoPath, worktreePath string) error {
+	_, err := runner.Run(repoPath, "worktree", "remove", worktreePath)
+	return err
+}
+
 // ToWorktreeInfo converts parsed entries to model.WorktreeInfo slices.
 func ToWorktreeInfo(entries []worktreeEntry) []model.WorktreeInfo {
 	infos := make([]model.WorktreeInfo, len(entries))
@@ -106,6 +112,7 @@ func ToWorktreeInfo(entries []worktreeEntry) []model.WorktreeInfo {
 		infos[i] = model.WorktreeInfo{
 			Path:   e.Path,
 			Branch: e.Branch,
+			IsBare: e.IsBare,
 		}
 	}
 	return infos

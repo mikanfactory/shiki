@@ -209,6 +209,45 @@ func TestSelectWorktreeWindow_ListError(t *testing.T) {
 	}
 }
 
+func TestSendKeys_Success(t *testing.T) {
+	runner := &FakeRunner{
+		Outputs: map[string]string{
+			"[send-keys -t %2 npm run dev Enter]": "",
+		},
+	}
+
+	err := SendKeys(runner, "%2", "npm run dev")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(runner.Calls) != 1 {
+		t.Fatalf("expected 1 call, got %d", len(runner.Calls))
+	}
+	call := runner.Calls[0]
+	expected := []string{"send-keys", "-t", "%2", "npm run dev", "Enter"}
+	if len(call) != len(expected) {
+		t.Fatalf("call args length = %d, want %d", len(call), len(expected))
+	}
+	for i := range expected {
+		if call[i] != expected[i] {
+			t.Errorf("call[%d] = %q, want %q", i, call[i], expected[i])
+		}
+	}
+}
+
+func TestSendKeys_Error(t *testing.T) {
+	runner := &FakeRunner{
+		Errors: map[string]error{
+			"[send-keys -t %2 bad-cmd Enter]": fmt.Errorf("pane not found"),
+		},
+	}
+
+	err := SendKeys(runner, "%2", "bad-cmd")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
+
 func TestIsInsideTmux(t *testing.T) {
 	original := IsInsideTmux
 	t.Cleanup(func() { IsInsideTmux = original })
