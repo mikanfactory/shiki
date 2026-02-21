@@ -112,7 +112,7 @@ func listPaneIDs(runner Runner, sessionName string, windowName string) ([]string
 //	|  center-1        +----------+
 //	|                  | br-1     |
 //	+------------------+----------+
-func createMainWindow(runner Runner, sessionName string) error {
+func createMainWindow(runner Runner, sessionName string, startDir string) error {
 	sessionTarget := sessionName + ":0"
 
 	if _, err := runner.Run("rename-window", "-t", sessionTarget, mainWindowName); err != nil {
@@ -121,11 +121,11 @@ func createMainWindow(runner Runner, sessionName string) error {
 
 	mainTarget := sessionName + ":" + mainWindowName
 
-	if _, err := runner.Run("split-window", "-h", "-t", mainTarget); err != nil {
+	if _, err := runner.Run("split-window", "-h", "-t", mainTarget, "-c", startDir); err != nil {
 		return fmt.Errorf("creating right column split: %w", err)
 	}
 
-	if _, err := runner.Run("split-window", "-v", "-t", mainTarget+".1"); err != nil {
+	if _, err := runner.Run("split-window", "-v", "-t", mainTarget+".1", "-c", startDir); err != nil {
 		return fmt.Errorf("creating bottom-right split: %w", err)
 	}
 
@@ -141,7 +141,7 @@ func createBackgroundWindow(runner Runner, sessionName string, startDir string) 
 	bgTarget := sessionName + ":" + backgroundWindowName
 
 	for i := 0; i < 3; i++ {
-		if _, err := runner.Run("split-window", "-v", "-t", bgTarget); err != nil {
+		if _, err := runner.Run("split-window", "-v", "-t", bgTarget, "-c", startDir); err != nil {
 			return fmt.Errorf("creating background pane %d: %w", i+2, err)
 		}
 	}
@@ -156,7 +156,7 @@ func CreateSessionLayout(runner Runner, sessionName string, startDir string) (Se
 		return SessionLayout{}, fmt.Errorf("creating session %s: %w", sessionName, err)
 	}
 
-	if err := createMainWindow(runner, sessionName); err != nil {
+	if err := createMainWindow(runner, sessionName, startDir); err != nil {
 		return SessionLayout{}, err
 	}
 

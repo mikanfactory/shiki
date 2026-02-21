@@ -82,7 +82,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		// Run startup command only for newly created sessions
+		// Run startup commands only for newly created sessions
 		if layout.BottomRight1.PaneID != "" {
 			repo := findRepoByPath(cfg, finalModel.SelectedRepoPath())
 			if repo.StartupCommand != "" {
@@ -90,11 +90,33 @@ func main() {
 					fmt.Fprintf(os.Stderr, "startup command error: %v\n", err)
 				}
 			}
+
+			// Launch diff-ui in top-right pane
+			if diffUIPath := findDiffUI(); diffUIPath != "" {
+				if err := tmux.SendKeys(tmuxRunner, layout.TopRight1.PaneID, diffUIPath); err != nil {
+					fmt.Fprintf(os.Stderr, "diff-ui launch error: %v\n", err)
+				}
+			}
 		}
 		return
 	}
 
 	fmt.Print(selected)
+}
+
+func findDiffUI() string {
+	// Look for diff-ui in the same directory as the current executable
+	if exe, err := os.Executable(); err == nil {
+		candidate := filepath.Join(filepath.Dir(exe), "diff-ui")
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+	}
+	// Fall back to PATH lookup
+	if p, err := exec.LookPath("diff-ui"); err == nil {
+		return p
+	}
+	return ""
 }
 
 func findRepoByPath(cfg model.Config, repoPath string) model.RepositoryDef {
