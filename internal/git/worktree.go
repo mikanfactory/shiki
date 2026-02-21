@@ -93,6 +93,12 @@ func AddWorktree(runner CommandRunner, repoPath, newPath, branch string) error {
 	return err
 }
 
+// RenameBranch renames a branch in the given worktree directory.
+func RenameBranch(runner CommandRunner, worktreePath, oldBranch, newBranch string) error {
+	_, err := runner.Run(worktreePath, "branch", "-m", oldBranch, newBranch)
+	return err
+}
+
 // ToWorktreeInfo converts parsed entries to model.WorktreeInfo slices.
 func ToWorktreeInfo(entries []worktreeEntry) []model.WorktreeInfo {
 	infos := make([]model.WorktreeInfo, len(entries))

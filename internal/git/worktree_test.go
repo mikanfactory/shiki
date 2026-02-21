@@ -163,6 +163,30 @@ func TestAddWorktree_Error(t *testing.T) {
 	}
 }
 
+func TestRenameBranch(t *testing.T) {
+	runner := FakeCommandRunner{
+		Outputs: map[string]string{
+			"/tmp/worktree:[branch -m user/south-korea user/fix-login]": "",
+		},
+	}
+
+	err := RenameBranch(runner, "/tmp/worktree", "user/south-korea", "user/fix-login")
+	if err != nil {
+		t.Fatalf("RenameBranch failed: %v", err)
+	}
+}
+
+func TestRenameBranch_Error(t *testing.T) {
+	runner := FakeCommandRunner{
+		Outputs: map[string]string{},
+	}
+
+	err := RenameBranch(runner, "/tmp/worktree", "user/south-korea", "user/fix-login")
+	if err == nil {
+		t.Error("expected error, got nil")
+	}
+}
+
 func assertWorktree(t *testing.T, got worktreeEntry, want WorktreeResult, label string) {
 	t.Helper()
 	if got.Path != want.Path {
