@@ -19,29 +19,13 @@ import (
 type Tab int
 
 const (
-	TabAllFiles Tab = iota
-	TabChanges
+	TabChanges Tab = iota
 	TabChecks
 )
 
 const pollInterval = 5 * time.Second
 
 // === Data Types ===
-
-type FileNode struct {
-	Name     string
-	IsDir    bool
-	Children []FileNode
-	Expanded bool
-}
-
-type FlatNode struct {
-	Name     string
-	IsDir    bool
-	Expanded bool
-	Depth    int
-	Path     []int // index path into tree for toggling
-}
 
 type ChangedFile struct {
 	Path      string
@@ -82,13 +66,6 @@ type TickMsg time.Time
 
 // === Sub-Models ===
 
-type AllFilesModel struct {
-	nodes     []FileNode
-	flatNodes []FlatNode
-	cursor    int
-	scrollOff int
-}
-
 type ChangesModel struct {
 	files     []ChangedFile
 	cursor    int
@@ -122,8 +99,7 @@ type Model struct {
 	gitRunner git.CommandRunner
 	ghRunner  github.Runner
 
-	allFiles AllFilesModel
-	changes  ChangesModel
+	changes ChangesModel
 	checks   ChecksModel
 }
 
@@ -154,10 +130,6 @@ var (
 
 	cursorStyle = lipgloss.NewStyle().
 			Foreground(colorSecondary).
-			Bold(true)
-
-	dirStyle = lipgloss.NewStyle().
-			Foreground(colorWhite).
 			Bold(true)
 
 	fileStyle = lipgloss.NewStyle().
@@ -205,22 +177,6 @@ var (
 	selectedStyle = lipgloss.NewStyle().
 			Background(lipgloss.Color("236"))
 )
-
-// === Static Data ===
-
-func dummyFileTree() []FileNode {
-	return []FileNode{
-		{Name: ".context", IsDir: true, Expanded: false, Children: []FileNode{}},
-		{Name: "cmd", IsDir: true, Expanded: true, Children: []FileNode{
-			{Name: "worktree-ui", IsDir: true, Expanded: true, Children: []FileNode{
-				{Name: "main.go", IsDir: false},
-			}},
-		}},
-		{Name: ".git", IsDir: false},
-		{Name: "go.mod", IsDir: false},
-		{Name: "go.sum", IsDir: false},
-	}
-}
 
 // === Data Fetching Commands ===
 
@@ -290,87 +246,6 @@ func tickCmd() tea.Cmd {
 	})
 }
 
-// === Tree Flattening ===
-
-func flattenTree(nodes []FileNode, depth int, path []int) []FlatNode {
-	var result []FlatNode
-	for i, node := range nodes {
-		currentPath := make([]int, len(path)+1)
-		copy(currentPath, path)
-		currentPath[len(path)] = i
-
-		result = append(result, FlatNode{
-			Name:     node.Name,
-			IsDir:    node.IsDir,
-			Expanded: node.Expanded,
-			Depth:    depth,
-			Path:     currentPath,
-		})
-
-		if node.IsDir && node.Expanded {
-			result = append(result, flattenTree(node.Children, depth+1, currentPath)...)
-		}
-	}
-	return result
-}
-
-func toggleNode(nodes []FileNode, path []int) []FileNode {
-	if len(path) == 0 {
-		return nodes
-	}
-
-	idx := path[0]
-	if idx < 0 || idx >= len(nodes) {
-		return nodes
-	}
-
-	if len(path) == 1 {
-		if nodes[idx].IsDir {
-			nodes[idx].Expanded = !nodes[idx].Expanded
-		}
-		return nodes
-	}
-
-	nodes[idx].Children = toggleNode(nodes[idx].Children, path[1:])
-	return nodes
-}
-
-func expandNode(nodes []FileNode, path []int) []FileNode {
-	if len(path) == 0 {
-		return nodes
-	}
-	idx := path[0]
-	if idx < 0 || idx >= len(nodes) {
-		return nodes
-	}
-	if len(path) == 1 {
-		if nodes[idx].IsDir {
-			nodes[idx].Expanded = true
-		}
-		return nodes
-	}
-	nodes[idx].Children = expandNode(nodes[idx].Children, path[1:])
-	return nodes
-}
-
-func collapseNode(nodes []FileNode, path []int) []FileNode {
-	if len(path) == 0 {
-		return nodes
-	}
-	idx := path[0]
-	if idx < 0 || idx >= len(nodes) {
-		return nodes
-	}
-	if len(path) == 1 {
-		if nodes[idx].IsDir {
-			nodes[idx].Expanded = false
-		}
-		return nodes
-	}
-	nodes[idx].Children = collapseNode(nodes[idx].Children, path[1:])
-	return nodes
-}
-
 // === Scroll Helper ===
 
 func adjustScroll(cursor, scrollOff, viewportHeight, totalItems int) int {
@@ -384,106 +259,6 @@ func adjustScroll(cursor, scrollOff, viewportHeight, totalItems int) int {
 		return cursor - viewportHeight + 1
 	}
 	return scrollOff
-}
-
-// === AllFilesModel Methods ===
-
-func (m AllFilesModel) update(msg tea.KeyMsg) AllFilesModel {
-	switch msg.String() {
-	case "up", "k":
-		if m.cursor > 0 {
-			m.cursor--
-		}
-	case "down", "j":
-		if m.cursor < len(m.flatNodes)-1 {
-			m.cursor++
-		}
-	case "enter":
-		if m.cursor < len(m.flatNodes) {
-			node := m.flatNodes[m.cursor]
-			if node.IsDir {
-				m.nodes = toggleNode(m.nodes, node.Path)
-				m.flatNodes = flattenTree(m.nodes, 0, nil)
-				if m.cursor >= len(m.flatNodes) {
-					m.cursor = len(m.flatNodes) - 1
-				}
-			}
-		}
-	case "right", "l":
-		if m.cursor < len(m.flatNodes) {
-			node := m.flatNodes[m.cursor]
-			if node.IsDir && !node.Expanded {
-				m.nodes = expandNode(m.nodes, node.Path)
-				m.flatNodes = flattenTree(m.nodes, 0, nil)
-			}
-		}
-	case "left", "h":
-		if m.cursor < len(m.flatNodes) {
-			node := m.flatNodes[m.cursor]
-			if node.IsDir && node.Expanded {
-				m.nodes = collapseNode(m.nodes, node.Path)
-				m.flatNodes = flattenTree(m.nodes, 0, nil)
-				if m.cursor >= len(m.flatNodes) {
-					m.cursor = len(m.flatNodes) - 1
-				}
-			}
-		}
-	case "g":
-		m.cursor = 0
-	case "G":
-		if len(m.flatNodes) > 0 {
-			m.cursor = len(m.flatNodes) - 1
-		}
-	}
-	return m
-}
-
-func (m AllFilesModel) view(width, height int) string {
-	m.scrollOff = adjustScroll(m.cursor, m.scrollOff, height, len(m.flatNodes))
-
-	var lines []string
-	end := m.scrollOff + height
-	if end > len(m.flatNodes) {
-		end = len(m.flatNodes)
-	}
-
-	for i := m.scrollOff; i < end; i++ {
-		node := m.flatNodes[i]
-		indent := strings.Repeat("  ", node.Depth)
-
-		var icon string
-		if node.IsDir {
-			if node.Expanded {
-				icon = dirStyle.Render("▾ ")
-			} else {
-				icon = dirStyle.Render("▸ ")
-			}
-		} else {
-			icon = "  "
-		}
-
-		var name string
-		if node.IsDir {
-			name = dirStyle.Render(node.Name)
-		} else {
-			name = fileStyle.Render(node.Name)
-		}
-
-		line := fmt.Sprintf(" %s%s%s", indent, icon, name)
-
-		if i == m.cursor {
-			line = selectedStyle.Render(cursorStyle.Render(">") + line[1:])
-		}
-
-		lines = append(lines, line)
-	}
-
-	// Pad remaining lines
-	for len(lines) < height {
-		lines = append(lines, "")
-	}
-
-	return strings.Join(lines, "\n")
 }
 
 // === ChangesModel Methods ===
@@ -702,18 +477,13 @@ func (m ChecksModel) view(width, height int) string {
 // === Init / Update / View ===
 
 func initialModel(repoDir string, gitRunner git.CommandRunner, ghRunner github.Runner) Model {
-	tree := dummyFileTree()
 	return Model{
-		activeTab: TabAllFiles,
+		activeTab: TabChanges,
 		width:     80,
 		height:    24,
 		repoDir:   repoDir,
 		gitRunner: gitRunner,
 		ghRunner:  ghRunner,
-		allFiles: AllFilesModel{
-			nodes:     tree,
-			flatNodes: flattenTree(tree, 0, nil),
-		},
 		changes: ChangesModel{
 			loading: true,
 		},
@@ -775,35 +545,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 
 		case "tab":
-			m.activeTab = (m.activeTab + 1) % 3
+			m.activeTab = (m.activeTab + 1) % 2
 			return m, tea.Batch(
 				fetchChangesCmd(m.gitRunner, m.repoDir),
 				fetchChecksCmd(m.ghRunner, m.gitRunner, m.repoDir),
 			)
 
 		case "shift+tab":
-			m.activeTab = (m.activeTab + 2) % 3
+			m.activeTab = (m.activeTab + 1) % 2
 			return m, tea.Batch(
 				fetchChangesCmd(m.gitRunner, m.repoDir),
 				fetchChecksCmd(m.ghRunner, m.gitRunner, m.repoDir),
 			)
 
 		case "1":
-			m.activeTab = TabAllFiles
-			return m, nil
-
-		case "2":
 			m.activeTab = TabChanges
 			return m, nil
 
-		case "3":
+		case "2":
 			m.activeTab = TabChecks
 			return m, nil
 
 		default:
 			switch m.activeTab {
-			case TabAllFiles:
-				m.allFiles = m.allFiles.update(msg)
 			case TabChanges:
 				m.changes = m.changes.update(msg)
 			case TabChecks:
@@ -826,8 +590,6 @@ func (m Model) View() string {
 
 	var content string
 	switch m.activeTab {
-	case TabAllFiles:
-		content = m.allFiles.view(m.width, viewportHeight)
 	case TabChanges:
 		content = m.changes.view(m.width, viewportHeight)
 	case TabChecks:
@@ -846,7 +608,6 @@ func (m Model) renderTabBar() string {
 		label string
 		tab   Tab
 	}{
-		{"All files", TabAllFiles},
 		{fmt.Sprintf("Changes %d", len(m.changes.files)), TabChanges},
 		{"Checks", TabChecks},
 	}
