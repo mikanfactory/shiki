@@ -83,8 +83,13 @@ func runDiffUI() {
 		tmuxRunner = tmux.OSRunner{}
 	}
 
+	var sessionName string
+	if tmuxRunner != nil {
+		sessionName, _ = tmux.CurrentSessionName(tmuxRunner)
+	}
+
 	p := tea.NewProgram(
-		diffui.NewModel(dir, gitRunner, ghRunner, tmuxRunner),
+		diffui.NewModel(dir, gitRunner, ghRunner, tmuxRunner, sessionName),
 		tea.WithAltScreen(),
 	)
 	if _, err := p.Run(); err != nil {
