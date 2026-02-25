@@ -61,6 +61,25 @@ func SendKeys(runner Runner, target string, command string) error {
 	return nil
 }
 
+// SelectPane focuses the given pane target via tmux select-pane.
+// The target should be a pane ID (e.g., "%0") or a session:window.pane reference.
+func SelectPane(runner Runner, target string) error {
+	_, err := runner.Run("select-pane", "-t", target)
+	if err != nil {
+		return fmt.Errorf("selecting pane %s: %w", target, err)
+	}
+	return nil
+}
+
+// PaneCurrentCommand returns the current foreground command of the given pane.
+func PaneCurrentCommand(runner Runner, target string) (string, error) {
+	out, err := runner.Run("display-message", "-p", "-t", target, "#{pane_current_command}")
+	if err != nil {
+		return "", fmt.Errorf("getting pane command for %s: %w", target, err)
+	}
+	return strings.TrimSpace(out), nil
+}
+
 // parseWindowList parses `tmux list-windows` output and returns the window index
 // for the window matching the given name, or empty string if not found.
 func parseWindowList(output string, windowName string) string {
