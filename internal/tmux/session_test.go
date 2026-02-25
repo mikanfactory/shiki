@@ -195,7 +195,7 @@ func TestCreateMainWindow_Success(t *testing.T) {
 	runner := &FakeRunner{
 		Outputs: map[string]string{
 			"[rename-window -t my-session:0 main-window]":                    "",
-			"[split-window -h -t my-session:main-window -c /path]":          "",
+			"[split-window -h -t my-session:main-window -c /path -p 25]":    "",
 			"[split-window -v -t my-session:main-window.1 -c /path]": "",
 		},
 	}
@@ -231,7 +231,7 @@ func TestCreateMainWindow_FirstSplitError(t *testing.T) {
 			"[rename-window -t s:0 main-window]": "",
 		},
 		Errors: map[string]error{
-			"[split-window -h -t s:main-window -c /path]": fmt.Errorf("split failed"),
+			"[split-window -h -t s:main-window -c /path -p 25]": fmt.Errorf("split failed"),
 		},
 	}
 
@@ -245,7 +245,7 @@ func TestCreateMainWindow_SecondSplitError(t *testing.T) {
 	runner := &FakeRunner{
 		Outputs: map[string]string{
 			"[rename-window -t s:0 main-window]":          "",
-			"[split-window -h -t s:main-window -c /path]": "",
+			"[split-window -h -t s:main-window -c /path -p 25]": "",
 		},
 		Errors: map[string]error{
 			"[split-window -v -t s:main-window.1 -c /path]": fmt.Errorf("split failed"),
@@ -345,7 +345,7 @@ func newFullSessionRunner(session string, dir string) *FakeRunner {
 		Outputs: map[string]string{
 			fmt.Sprintf("[new-session -d -s %s -c %s]", session, dir):                             "",
 			fmt.Sprintf("[rename-window -t %s:0 main-window]", session):                            "",
-			fmt.Sprintf("[split-window -h -t %s:main-window -c %s]", session, dir):                 "",
+			fmt.Sprintf("[split-window -h -t %s:main-window -c %s -p 25]", session, dir):            "",
 			fmt.Sprintf("[split-window -v -t %s:main-window.1 -c %s]", session, dir):               "",
 			fmt.Sprintf("[list-panes -t %s:main-window -F #{pane_id}]", session):                   "%0\n%1\n%2\n",
 			fmt.Sprintf("[new-window -t %s -n background-window -c %s]", session, dir):             "",
@@ -408,7 +408,7 @@ func TestCreateSessionLayout_ListMainPanesError(t *testing.T) {
 		Outputs: map[string]string{
 			"[new-session -d -s s -c /p]":                  "",
 			"[rename-window -t s:0 main-window]":           "",
-			"[split-window -h -t s:main-window -c /p]":     "",
+			"[split-window -h -t s:main-window -c /p -p 25]":     "",
 			"[split-window -v -t s:main-window.1 -c /p]":   "",
 		},
 		Errors: map[string]error{
@@ -456,7 +456,7 @@ func TestSelectWorktreeSession_NewSession(t *testing.T) {
 		Outputs: map[string]string{
 			"[new-session -d -s feat -c /repos/feat]":                              "",
 			"[rename-window -t feat:0 main-window]":                                "",
-			"[split-window -h -t feat:main-window -c /repos/feat]":                 "",
+			"[split-window -h -t feat:main-window -c /repos/feat -p 25]":                 "",
 			"[split-window -v -t feat:main-window.1 -c /repos/feat]":               "",
 			"[list-panes -t feat:main-window -F #{pane_id}]":                       "%0\n%1\n%2\n",
 			"[new-window -t feat -n background-window -c /repos/feat]":             "",
@@ -502,7 +502,7 @@ func TestSelectWorktreeSession_SwitchAfterCreateError(t *testing.T) {
 		Outputs: map[string]string{
 			"[new-session -d -s feat -c /repos/feat]":                      "",
 			"[rename-window -t feat:0 main-window]":                        "",
-			"[split-window -h -t feat:main-window -c /repos/feat]":         "",
+			"[split-window -h -t feat:main-window -c /repos/feat -p 25]":         "",
 			"[split-window -v -t feat:main-window.1 -c /repos/feat]":       "",
 			"[list-panes -t feat:main-window -F #{pane_id}]":               "%0\n%1\n%2\n",
 			"[new-window -t feat -n background-window -c /repos/feat]":     "",

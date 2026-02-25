@@ -160,6 +160,13 @@ func runWorktreeUI(configPath string) {
 					fmt.Fprintf(os.Stderr, "diff-ui launch error: %v\n", err)
 				}
 			}
+
+			// Launch claude CLI in center pane
+			if _, err := exec.LookPath("claude"); err == nil {
+				if err := tmux.SendKeys(tmuxRunner, layout.Center1.PaneID, "claude"); err != nil {
+					fmt.Fprintf(os.Stderr, "claude launch error: %v\n", err)
+				}
+			}
 		}
 		return
 	}
