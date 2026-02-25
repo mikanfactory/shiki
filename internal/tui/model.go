@@ -126,6 +126,7 @@ type Model struct {
 	branchNameGen            branchname.Generator
 	confirmingArchive        bool
 	archiveTarget            int
+	agentTickRunning         bool
 }
 
 // NewModel creates a new TUI model.
@@ -209,7 +210,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.items = sidebar.BuildItems(msg.Groups)
 		m.cursor = FirstSelectable(m.items)
 		m.loading = false
-		return m, agentTickCmd()
+		if !m.agentTickRunning {
+			m.agentTickRunning = true
+			return m, agentTickCmd()
+		}
+		return m, nil
 
 	case AgentTickMsg:
 		if len(m.groups) > 0 && m.tmuxRunner != nil {

@@ -176,7 +176,39 @@ func TestUpdate_GitDataMsg(t *testing.T) {
 		t.Errorf("len(groups) = %d, want 1", len(updated.groups))
 	}
 	if cmd == nil {
-		t.Error("expected agentTickCmd to be returned after GitDataMsg")
+		t.Error("expected agentTickCmd to be returned after first GitDataMsg")
+	}
+	if !updated.agentTickRunning {
+		t.Error("agentTickRunning should be true after first GitDataMsg")
+	}
+}
+
+func TestUpdate_GitDataMsg_NoTickDuplication(t *testing.T) {
+	m := Model{
+		sidebarWidth:     30,
+		loading:          true,
+		agentTickRunning: true, // already running
+	}
+
+	groups := []model.RepoGroup{
+		{
+			Name:      "test",
+			RootPath:  "/test",
+			Worktrees: []model.WorktreeInfo{{Path: "/test", Branch: "main"}},
+		},
+	}
+
+	result, cmd := m.Update(GitDataMsg{Groups: groups})
+	updated := result.(Model)
+
+	if updated.loading {
+		t.Error("loading should be false after GitDataMsg")
+	}
+	if len(updated.items) == 0 {
+		t.Error("items should be populated after GitDataMsg")
+	}
+	if cmd != nil {
+		t.Error("expected nil cmd when agentTickRunning is already true")
 	}
 }
 
