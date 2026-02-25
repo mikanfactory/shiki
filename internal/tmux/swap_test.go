@@ -6,10 +6,28 @@ import (
 )
 
 func TestCurrentSessionName(t *testing.T) {
+	t.Setenv("TMUX_PANE", "")
+
 	t.Run("success", func(t *testing.T) {
 		runner := &FakeRunner{
 			Outputs: map[string]string{
 				"[display-message -p #{session_name}]": "my-session\n",
+			},
+		}
+		name, err := CurrentSessionName(runner)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if name != "my-session" {
+			t.Errorf("expected %q, got %q", "my-session", name)
+		}
+	})
+
+	t.Run("with TMUX_PANE env", func(t *testing.T) {
+		t.Setenv("TMUX_PANE", "%5")
+		runner := &FakeRunner{
+			Outputs: map[string]string{
+				"[display-message -p -t %5 #{session_name}]": "my-session\n",
 			},
 		}
 		name, err := CurrentSessionName(runner)
@@ -35,6 +53,8 @@ func TestCurrentSessionName(t *testing.T) {
 }
 
 func TestSwapCenter(t *testing.T) {
+	t.Setenv("TMUX_PANE", "")
+
 	t.Run("success", func(t *testing.T) {
 		runner := &FakeRunner{
 			Outputs: map[string]string{
@@ -101,6 +121,8 @@ func TestSwapCenter(t *testing.T) {
 }
 
 func TestSwapRightBelow(t *testing.T) {
+	t.Setenv("TMUX_PANE", "")
+
 	t.Run("success", func(t *testing.T) {
 		runner := &FakeRunner{
 			Outputs: map[string]string{

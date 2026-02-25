@@ -2,12 +2,19 @@ package tmux
 
 import (
 	"fmt"
+	"os"
 	"strings"
 )
 
 // CurrentSessionName retrieves the current tmux session name.
 func CurrentSessionName(runner Runner) (string, error) {
-	out, err := runner.Run("display-message", "-p", "#{session_name}")
+	args := []string{"display-message", "-p"}
+	if pane := os.Getenv("TMUX_PANE"); pane != "" {
+		args = append(args, "-t", pane)
+	}
+	args = append(args, "#{session_name}")
+
+	out, err := runner.Run(args...)
 	if err != nil {
 		return "", fmt.Errorf("getting session name: %w", err)
 	}

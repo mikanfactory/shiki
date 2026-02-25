@@ -40,6 +40,8 @@ func TestIsShellCommand(t *testing.T) {
 }
 
 func TestEnterOpensVimInIdleCenterPane(t *testing.T) {
+	t.Setenv("TMUX_PANE", "")
+
 	runner := &tmux.FakeRunner{
 		Outputs: map[string]string{
 			"[display-message -p #{session_name}]":                              "dev",
@@ -92,6 +94,8 @@ func TestEnterOpensVimInIdleCenterPane(t *testing.T) {
 }
 
 func TestEnterOpensVimInMainCenterPane_NoSwap(t *testing.T) {
+	t.Setenv("TMUX_PANE", "")
+
 	runner := &tmux.FakeRunner{
 		Outputs: map[string]string{
 			"[display-message -p #{session_name}]":                              "dev",
@@ -128,6 +132,8 @@ func TestEnterOpensVimInMainCenterPane_NoSwap(t *testing.T) {
 }
 
 func TestEnterAllCenterPanesBusy(t *testing.T) {
+	t.Setenv("TMUX_PANE", "")
+
 	runner := &tmux.FakeRunner{
 		Outputs: map[string]string{
 			"[display-message -p #{session_name}]":                                     "dev",
