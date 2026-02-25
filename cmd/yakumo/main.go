@@ -70,8 +70,13 @@ func runDiffUI() {
 	gitRunner := git.OSCommandRunner{}
 	ghRunner := github.OSRunner{}
 
+	var tmuxRunner tmux.Runner
+	if tmux.IsInsideTmux() {
+		tmuxRunner = tmux.OSRunner{}
+	}
+
 	p := tea.NewProgram(
-		diffui.NewModel(dir, gitRunner, ghRunner),
+		diffui.NewModel(dir, gitRunner, ghRunner, tmuxRunner),
 		tea.WithAltScreen(),
 	)
 	if _, err := p.Run(); err != nil {
