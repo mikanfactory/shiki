@@ -548,7 +548,7 @@ func (m Model) updateConfirmArchiveMode(msg tea.Msg) (tea.Model, tea.Cmd) {
 			item := m.items[m.archiveTarget]
 			m.loading = true
 			m.err = nil
-			return m, archiveWorktreeCmd(m.runner, item.RepoRootPath, item.WorktreePath)
+			return m, archiveWorktreeCmd(m.runner, m.tmuxRunner, item.RepoRootPath, item.WorktreePath)
 		case tea.KeyCtrlC:
 			m.quitting = true
 			return m, tea.Quit
@@ -569,11 +569,23 @@ func (m Model) updateConfirmArchiveMode(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func archiveWorktreeCmd(runner git.CommandRunner, repoRootPath, worktreePath string) tea.Cmd {
+func archiveWorktreeCmd(runner git.CommandRunner, tmuxRunner tmux.Runner, repoRootPath, worktreePath string) tea.Cmd {
 	return func() tea.Msg {
+		// Kill tmux session first (processes inside worktree would block git worktree remove)
+		sessionName := filepath.Base(worktreePath)
+		if tmuxRunner != nil {
+			tmux.KillSession(tmuxRunner, sessionName) // ignore error (session may not exist)
+		}
+
 		if err := git.RemoveWorktree(runner, repoRootPath, worktreePath); err != nil {
 			return WorktreeArchiveErrMsg{Err: err}
 		}
+
+		// Clean up directory if it still remains
+		if _, err := os.Stat(worktreePath); err == nil {
+			os.RemoveAll(worktreePath)
+		}
+
 		return WorktreeArchivedMsg{}
 	}
 }

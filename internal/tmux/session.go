@@ -83,6 +83,12 @@ func HasSession(runner Runner, sessionName string) (bool, error) {
 	return true, nil
 }
 
+// KillSession terminates a tmux session with the given name.
+func KillSession(runner Runner, sessionName string) error {
+	_, err := runner.Run("kill-session", "-t", sessionName)
+	return err
+}
+
 // SwitchToSession switches the client to an existing session and selects the main-window.
 func SwitchToSession(runner Runner, sessionName string) error {
 	if _, err := runner.Run("switch-client", "-t", sessionName); err != nil {

@@ -1442,12 +1442,29 @@ func TestArchiveWorktreeCmd_Success(t *testing.T) {
 			"/repo:[worktree remove /tmp/old-worktree]": "",
 		},
 	}
+	tmuxRunner := &tmux.FakeRunner{
+		Outputs: map[string]string{
+			"[kill-session -t old-worktree]": "",
+		},
+	}
 
-	cmd := archiveWorktreeCmd(runner, "/repo", "/tmp/old-worktree")
+	cmd := archiveWorktreeCmd(runner, tmuxRunner, "/repo", "/tmp/old-worktree")
 	msg := cmd()
 
 	if _, ok := msg.(WorktreeArchivedMsg); !ok {
 		t.Fatalf("expected WorktreeArchivedMsg, got %T", msg)
+	}
+
+	// Verify kill-session was called
+	found := false
+	for _, call := range tmuxRunner.Calls {
+		if len(call) >= 1 && call[0] == "kill-session" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected kill-session to be called")
 	}
 }
 
@@ -1455,8 +1472,13 @@ func TestArchiveWorktreeCmd_Error(t *testing.T) {
 	runner := git.FakeCommandRunner{
 		Outputs: map[string]string{},
 	}
+	tmuxRunner := &tmux.FakeRunner{
+		Outputs: map[string]string{
+			"[kill-session -t old-worktree]": "",
+		},
+	}
 
-	cmd := archiveWorktreeCmd(runner, "/repo", "/tmp/old-worktree")
+	cmd := archiveWorktreeCmd(runner, tmuxRunner, "/repo", "/tmp/old-worktree")
 	msg := cmd()
 
 	errMsg, ok := msg.(WorktreeArchiveErrMsg)
@@ -1465,6 +1487,48 @@ func TestArchiveWorktreeCmd_Error(t *testing.T) {
 	}
 	if errMsg.Err == nil {
 		t.Error("expected error to be set")
+	}
+}
+
+func TestArchiveWorktreeCmd_NilTmuxRunner(t *testing.T) {
+	runner := git.FakeCommandRunner{
+		Outputs: map[string]string{
+			"/repo:[worktree remove /tmp/old-worktree]": "",
+		},
+	}
+
+	cmd := archiveWorktreeCmd(runner, nil, "/repo", "/tmp/old-worktree")
+	msg := cmd()
+
+	if _, ok := msg.(WorktreeArchivedMsg); !ok {
+		t.Fatalf("expected WorktreeArchivedMsg, got %T", msg)
+	}
+}
+
+func TestArchiveWorktreeCmd_RemovesDirectory(t *testing.T) {
+	// Create a temp directory to simulate a leftover worktree directory
+	tmpDir := t.TempDir()
+	worktreePath := filepath.Join(tmpDir, "leftover-wt")
+	if err := os.MkdirAll(worktreePath, 0o755); err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+
+	runner := git.FakeCommandRunner{
+		Outputs: map[string]string{
+			fmt.Sprintf("%s:[worktree remove %s]", tmpDir, worktreePath): "",
+		},
+	}
+
+	cmd := archiveWorktreeCmd(runner, nil, tmpDir, worktreePath)
+	msg := cmd()
+
+	if _, ok := msg.(WorktreeArchivedMsg); !ok {
+		t.Fatalf("expected WorktreeArchivedMsg, got %T", msg)
+	}
+
+	// Verify directory was removed
+	if _, err := os.Stat(worktreePath); !os.IsNotExist(err) {
+		t.Errorf("expected worktree directory to be removed, but it still exists")
 	}
 }
 

@@ -141,6 +141,37 @@ func TestHasSession_NotExists(t *testing.T) {
 	}
 }
 
+// --- KillSession tests ---
+
+func TestKillSession_Success(t *testing.T) {
+	runner := &FakeRunner{
+		Outputs: map[string]string{
+			"[kill-session -t my-session]": "",
+		},
+	}
+
+	err := KillSession(runner, "my-session")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(runner.Calls) != 1 {
+		t.Fatalf("expected 1 call, got %d", len(runner.Calls))
+	}
+}
+
+func TestKillSession_Error(t *testing.T) {
+	runner := &FakeRunner{
+		Errors: map[string]error{
+			"[kill-session -t nonexistent]": fmt.Errorf("session not found"),
+		},
+	}
+
+	err := KillSession(runner, "nonexistent")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
 // --- SwitchToSession tests ---
 
 func TestSwitchToSession_Success(t *testing.T) {
