@@ -109,32 +109,32 @@ const renameTimeoutMs = 10 * 60 * 1000
 
 // Model is the BubbleTea model for the sidebar.
 type Model struct {
-	items                    []model.NavigableItem
-	groups                   []model.RepoGroup
-	cursor                   int
-	sidebarWidth             int
-	selected                 string
-	selectedRepoPath         string
-	quitting                 bool
-	err                      error
-	config                   model.Config
-	runner                   git.CommandRunner
-	loading                  bool
-	addingRepo               bool
-	addingWorktree           bool
-	addingWorktreeRepoPath   string
-	textInput                textinput.Model
-	configPath               string
-	tmuxRunner               tmux.Runner
-	ghRunner                 github.Runner
-	agentStatus              map[string][]model.AgentInfo
-	branchRenames            map[string]model.BranchRenameInfo
-	claudeReader             claude.Reader
-	branchNameGen            branchname.Generator
-	lastSuggestionDir        string
-	confirmingArchive        bool
-	archiveTarget            int
-	agentTickRunning         bool
+	items                  []model.NavigableItem
+	groups                 []model.RepoGroup
+	cursor                 int
+	sidebarWidth           int
+	selected               string
+	selectedRepoPath       string
+	quitting               bool
+	err                    error
+	config                 model.Config
+	runner                 git.CommandRunner
+	loading                bool
+	addingRepo             bool
+	addingWorktree         bool
+	addingWorktreeRepoPath string
+	textInput              textinput.Model
+	configPath             string
+	tmuxRunner             tmux.Runner
+	ghRunner               github.Runner
+	agentStatus            map[string][]model.AgentInfo
+	branchRenames          map[string]model.BranchRenameInfo
+	claudeReader           claude.Reader
+	branchNameGen          branchname.Generator
+	lastSuggestionDir      string
+	confirmingArchive      bool
+	archiveTarget          int
+	agentTickRunning       bool
 }
 
 // NewModel creates a new TUI model.
@@ -556,7 +556,7 @@ func (m Model) updateAddWorktreeMode(msg tea.Msg) (tea.Model, tea.Cmd) {
 			repoName := repoNameFromConfig(m.config, m.addingWorktreeRepoPath)
 			if input == "" {
 				// Empty input: create worktree with random branch name
-				return m, addWorktreeCmd(m.runner, m.addingWorktreeRepoPath, m.config.WorktreeBasePath, repoName)
+				return m, addWorktreeCmd(m.runner, m.addingWorktreeRepoPath, m.config.WorktreeBasePath, repoName, m.config.DefaultBaseRef)
 			}
 			// URL input: clone from URL
 			return m, addWorktreeFromURLCmd(m.runner, m.ghRunner, m.addingWorktreeRepoPath, m.config.WorktreeBasePath, repoName, input)
@@ -669,7 +669,7 @@ func repoNameFromConfig(cfg model.Config, repoPath string) string {
 	return filepath.Base(repoPath)
 }
 
-func addWorktreeCmd(runner git.CommandRunner, repoPath, basePath, repoName string) tea.Cmd {
+func addWorktreeCmd(runner git.CommandRunner, repoPath, basePath, repoName, baseRef string) tea.Cmd {
 	return func() tea.Msg {
 		userName, err := git.GetUserName(runner, repoPath)
 		if err != nil {
@@ -678,7 +678,11 @@ func addWorktreeCmd(runner git.CommandRunner, repoPath, basePath, repoName strin
 
 		country := git.RandomCountry()
 		slug := git.Slugify(country)
-		branch := userName + "/" + slug
+		userSlug := branchname.SanitizeBranchName(userName)
+		if userSlug == "" {
+			userSlug = "user"
+		}
+		branch := userSlug + "/" + slug
 		newPath := filepath.Join(basePath, repoName, slug)
 		createdAt := time.Now().UnixMilli()
 
@@ -686,7 +690,7 @@ func addWorktreeCmd(runner git.CommandRunner, repoPath, basePath, repoName strin
 			return WorktreeAddErrMsg{Err: fmt.Errorf("creating parent directory: %w", err)}
 		}
 
-		if err := git.AddWorktree(runner, repoPath, newPath, branch); err != nil {
+		if err := git.AddWorktree(runner, repoPath, newPath, branch, baseRef); err != nil {
 			return WorktreeAddErrMsg{Err: err}
 		}
 
@@ -911,6 +915,11 @@ func fetchGitDataCmd(cfg model.Config, runner git.CommandRunner) tea.Cmd {
 	return func() tea.Msg {
 		var groups []model.RepoGroup
 
+		baseRef := cfg.DefaultBaseRef
+		if baseRef == "" {
+			baseRef = config.DefaultBaseRef
+		}
+
 		for _, repoDef := range cfg.Repositories {
 			entries, err := git.ListWorktrees(runner, repoDef.Path)
 			if err != nil {
@@ -919,7 +928,10 @@ func fetchGitDataCmd(cfg model.Config, runner git.CommandRunner) tea.Cmd {
 
 			worktrees := git.ToWorktreeInfo(entries)
 			for i := range worktrees {
-				status, _ := git.GetBranchDiffStat(runner, worktrees[i].Path)
+				status, err := git.GetBranchDiffStat(runner, worktrees[i].Path, baseRef)
+				if err != nil {
+					return GitDataErrMsg{Err: err}
+				}
 				worktrees[i].Status = status
 			}
 

@@ -21,6 +21,7 @@ type Tab int
 const (
 	TabChanges Tab = iota
 	TabChecks
+	tabCount
 )
 
 // === Data Types ===
@@ -107,6 +108,7 @@ type Model struct {
 	ghRunner    github.Runner
 	tmuxRunner  tmux.Runner // nil when not inside tmux
 	sessionName string      // cached tmux session name (empty when not in tmux)
+	baseRef     string
 
 	statusMsg string
 
@@ -117,7 +119,7 @@ type Model struct {
 // NewModel creates a new diff UI model.
 // tmuxRunner may be nil when running outside tmux (vim opens in the current pane).
 // sessionName is the cached tmux session name; pass "" if unknown.
-func NewModel(repoDir string, gitRunner git.CommandRunner, ghRunner github.Runner, tmuxRunner tmux.Runner, sessionName string) Model {
+func NewModel(repoDir string, gitRunner git.CommandRunner, ghRunner github.Runner, tmuxRunner tmux.Runner, sessionName string, baseRef string) Model {
 	return Model{
 		activeTab:   TabChanges,
 		width:       80,
@@ -127,6 +129,7 @@ func NewModel(repoDir string, gitRunner git.CommandRunner, ghRunner github.Runne
 		ghRunner:    ghRunner,
 		tmuxRunner:  tmuxRunner,
 		sessionName: sessionName,
+		baseRef:     baseRef,
 		changes: ChangesModel{
 			loading: true,
 		},
@@ -138,8 +141,8 @@ func NewModel(repoDir string, gitRunner git.CommandRunner, ghRunner github.Runne
 
 func (m Model) Init() tea.Cmd {
 	return tea.Batch(
-		fetchChangesCmd(m.gitRunner, m.repoDir),
-		fetchChecksCmd(m.ghRunner, m.gitRunner, m.repoDir),
+		fetchChangesCmd(m.gitRunner, m.repoDir, m.baseRef),
+		fetchChecksCmd(m.ghRunner, m.gitRunner, m.repoDir, m.baseRef),
 		tickCmd(),
 	)
 }
@@ -176,8 +179,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case VimFinishedMsg:
 		return m, tea.Batch(
-			fetchChangesCmd(m.gitRunner, m.repoDir),
-			fetchChecksCmd(m.ghRunner, m.gitRunner, m.repoDir),
+			fetchChangesCmd(m.gitRunner, m.repoDir, m.baseRef),
+			fetchChecksCmd(m.ghRunner, m.gitRunner, m.repoDir, m.baseRef),
 		)
 
 	case OpenVimResultMsg:
@@ -188,8 +191,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case TickMsg:
 		return m, tea.Batch(
-			fetchChangesCmd(m.gitRunner, m.repoDir),
-			fetchChecksCmd(m.ghRunner, m.gitRunner, m.repoDir),
+			fetchChangesCmd(m.gitRunner, m.repoDir, m.baseRef),
+			fetchChecksCmd(m.ghRunner, m.gitRunner, m.repoDir, m.baseRef),
 			tickCmd(),
 		)
 
@@ -202,17 +205,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 
 		case "tab":
-			m.activeTab = (m.activeTab + 1) % 2
+			m.activeTab = (m.activeTab + 1) % tabCount
 			return m, tea.Batch(
-				fetchChangesCmd(m.gitRunner, m.repoDir),
-				fetchChecksCmd(m.ghRunner, m.gitRunner, m.repoDir),
+				fetchChangesCmd(m.gitRunner, m.repoDir, m.baseRef),
+				fetchChecksCmd(m.ghRunner, m.gitRunner, m.repoDir, m.baseRef),
 			)
 
 		case "shift+tab":
-			m.activeTab = (m.activeTab + 1) % 2
+			m.activeTab = (m.activeTab + tabCount - 1) % tabCount
 			return m, tea.Batch(
-				fetchChangesCmd(m.gitRunner, m.repoDir),
-				fetchChecksCmd(m.ghRunner, m.gitRunner, m.repoDir),
+				fetchChangesCmd(m.gitRunner, m.repoDir, m.baseRef),
+				fetchChecksCmd(m.ghRunner, m.gitRunner, m.repoDir, m.baseRef),
 			)
 
 		case "1":
@@ -348,7 +351,8 @@ func openVimInIdleCenterPaneCmd(runner tmux.Runner, filePath string, sessionName
 			return OpenVimResultMsg{Err: fmt.Errorf("利用可能なcenter paneがありません")}
 		}
 
-		if err := tmux.SendKeys(runner, idleTarget, "vim "+filePath); err != nil {
+		cmd := "vim " + shellEscape(filePath)
+		if err := tmux.SendKeys(runner, idleTarget, cmd); err != nil {
 			return OpenVimResultMsg{Err: fmt.Errorf("vimの起動に失敗: %w", err)}
 		}
 
@@ -367,11 +371,17 @@ func openVimInIdleCenterPaneCmd(runner tmux.Runner, filePath string, sessionName
 	}
 }
 
+// shellEscape wraps a string in single quotes for safe shell usage.
+func shellEscape(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
+}
+
 // === Data Fetching Commands ===
 
-func fetchChangesCmd(runner git.CommandRunner, dir string) tea.Cmd {
+func fetchChangesCmd(runner git.CommandRunner, dir, baseRef string) tea.Cmd {
+	base := normalizeBaseRef(baseRef)
 	return func() tea.Msg {
-		entries, err := git.GetAllChanges(runner, dir, "origin/main")
+		entries, err := git.GetAllChanges(runner, dir, base)
 		if err != nil {
 			return ChangesDataErrMsg{Err: err}
 		}
@@ -387,14 +397,15 @@ func fetchChangesCmd(runner git.CommandRunner, dir string) tea.Cmd {
 	}
 }
 
-func fetchChecksCmd(ghRunner github.Runner, gitRunner git.CommandRunner, dir string) tea.Cmd {
+func fetchChecksCmd(ghRunner github.Runner, gitRunner git.CommandRunner, dir, baseRef string) tea.Cmd {
+	base := normalizeBaseRef(baseRef)
 	return func() tea.Msg {
 		pr, err := github.FetchPR(ghRunner, dir)
 		if err != nil {
 			return ChecksDataErrMsg{Err: err}
 		}
 
-		commitsBehind, _ := git.GetCommitsBehind(gitRunner, dir, "origin/main")
+		commitsBehind, _ := git.GetCommitsBehind(gitRunner, dir, base)
 
 		checks := make([]CheckResult, len(pr.StatusCheckRollup))
 		for i, sc := range pr.StatusCheckRollup {
@@ -434,4 +445,11 @@ func tickCmd() tea.Cmd {
 	return tea.Tick(pollInterval, func(t time.Time) tea.Msg {
 		return TickMsg(t)
 	})
+}
+
+func normalizeBaseRef(baseRef string) string {
+	if strings.TrimSpace(baseRef) == "" {
+		return "origin/main"
+	}
+	return baseRef
 }

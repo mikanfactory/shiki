@@ -1,11 +1,12 @@
 package git
 
 import (
-	"encoding/csv"
 	_ "embed"
+	"encoding/csv"
 	"math/rand"
 	"regexp"
 	"strings"
+	"time"
 	"unicode"
 
 	"golang.org/x/text/runes"
@@ -15,6 +16,10 @@ import (
 
 //go:embed countries.csv
 var countriesCSV string
+
+func init() {
+	rand.Seed(time.Now().UnixNano())
+}
 
 // LoadCountries parses the embedded CSV and returns a list of country names.
 func LoadCountries() []string {

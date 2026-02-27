@@ -1,17 +1,13 @@
 package git
 
-import (
-	"github.com/mikanfactory/yakumo/internal/model"
-)
+import "github.com/mikanfactory/yakumo/internal/model"
 
-const defaultBase = "origin/main"
-
-// GetBranchDiffStat runs `git diff origin/main...HEAD --numstat` and returns
+// GetBranchDiffStat runs `git diff <base>...HEAD --numstat` and returns
 // aggregated line insertion/deletion counts for the branch.
-func GetBranchDiffStat(runner CommandRunner, worktreePath string) (model.StatusInfo, error) {
-	entries, err := GetDiffNumstat(runner, worktreePath, defaultBase)
+func GetBranchDiffStat(runner CommandRunner, worktreePath, baseRef string) (model.StatusInfo, error) {
+	entries, err := GetDiffNumstat(runner, worktreePath, baseRef)
 	if err != nil {
-		return model.StatusInfo{}, nil
+		return model.StatusInfo{}, err
 	}
 
 	var info model.StatusInfo
