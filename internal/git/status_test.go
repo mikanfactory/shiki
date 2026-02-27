@@ -53,7 +53,7 @@ func TestGetBranchDiffStat(t *testing.T) {
 				},
 			}
 
-			got, err := GetBranchDiffStat(runner, "/repo")
+			got, err := GetBranchDiffStat(runner, "/repo", "origin/main")
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -72,13 +72,8 @@ func TestGetBranchDiffStat_ErrorReturnsEmpty(t *testing.T) {
 		},
 	}
 
-	got, err := GetBranchDiffStat(runner, "/repo")
-	if err != nil {
-		t.Fatalf("should not return error, got: %v", err)
-	}
-
-	want := model.StatusInfo{}
-	if got != want {
-		t.Errorf("GetBranchDiffStat = %+v, want empty %+v", got, want)
+	_, err := GetBranchDiffStat(runner, "/repo", "origin/main")
+	if err == nil {
+		t.Fatalf("expected error, got nil")
 	}
 }
