@@ -1694,6 +1694,57 @@ func TestArchiveWorktreeCmd_RemovesDirectory(t *testing.T) {
 	}
 }
 
+func TestArchiveWorktreeCmd_SwitchesToMainWhenInCurrentSession(t *testing.T) {
+	t.Setenv("TMUX_PANE", "")
+	runner := git.FakeCommandRunner{
+		Outputs: map[string]string{
+			"/repo:[worktree remove /tmp/south-korea]": "",
+		},
+	}
+	tmuxRunner := &tmux.FakeRunner{
+		Outputs: map[string]string{
+			// ResolveSessionName: has-session finds the session
+			"[has-session -t south-korea]": "",
+			// IsCurrentSession: current session matches
+			"[display-message -p #{session_name}]": "south-korea\n",
+			// SwitchToMainSession: main session exists
+			"[has-session -t yakumo-main]": "",
+			// SwitchToMainSession: switch-client
+			"[switch-client -t yakumo-main]": "",
+			// KillSession
+			"[kill-session -t south-korea]": "",
+		},
+	}
+
+	cmd := archiveWorktreeCmd(runner, tmuxRunner, "/repo", "/tmp/south-korea")
+	msg := cmd()
+
+	if _, ok := msg.(WorktreeArchivedMsg); !ok {
+		t.Fatalf("expected WorktreeArchivedMsg, got %T", msg)
+	}
+
+	// Verify switch-client was called before kill-session
+	switchIdx := -1
+	killIdx := -1
+	for i, call := range tmuxRunner.Calls {
+		if len(call) >= 3 && call[0] == "switch-client" && call[2] == "yakumo-main" {
+			switchIdx = i
+		}
+		if len(call) >= 1 && call[0] == "kill-session" {
+			killIdx = i
+		}
+	}
+	if switchIdx == -1 {
+		t.Error("expected switch-client to yakumo-main")
+	}
+	if killIdx == -1 {
+		t.Error("expected kill-session to be called")
+	}
+	if switchIdx != -1 && killIdx != -1 && switchIdx >= killIdx {
+		t.Errorf("switch-client (idx=%d) should be called before kill-session (idx=%d)", switchIdx, killIdx)
+	}
+}
+
 func TestUpdate_AddWorktreeMode_Escape_Cancels(t *testing.T) {
 	m := testModel()
 	m.addingWorktree = true

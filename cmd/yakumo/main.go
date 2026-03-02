@@ -142,6 +142,9 @@ func runWorktreeUI(configPath string) {
 	var tmuxRunner tmux.Runner
 	if tmux.IsInsideTmux() {
 		tmuxRunner = tmux.OSRunner{}
+		if err := tmux.EnsureMainSession(tmuxRunner); err != nil {
+			log.Printf("[main] EnsureMainSession failed (non-fatal): %v", err)
+		}
 	}
 
 	var ghRunner github.Runner
