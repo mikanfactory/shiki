@@ -644,6 +644,14 @@ func archiveWorktreeCmd(runner git.CommandRunner, tmuxRunner tmux.Runner, repoRo
 				}
 			}
 			sessionName := tmux.ResolveSessionName(tmuxRunner, worktreePath, getBranch)
+
+			// If we're inside the session being deleted, switch to main session first
+			if tmux.IsCurrentSession(tmuxRunner, sessionName) {
+				if err := tmux.SwitchToMainSession(tmuxRunner); err != nil {
+					log.Printf("[archive] switch to main session failed (non-fatal): %v", err)
+				}
+			}
+
 			tmux.KillSession(tmuxRunner, sessionName) // ignore error (session may not exist)
 		}
 
