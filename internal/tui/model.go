@@ -102,7 +102,7 @@ type WorktreeArchiveErrMsg struct {
 }
 
 // agentPollInterval is how often we poll tmux for Claude Code agent status.
-const agentPollInterval = 2 * time.Second
+const agentPollInterval = 500 * time.Millisecond
 
 // renameTimeoutMs is how long to wait for a prompt before giving up (10 minutes).
 const renameTimeoutMs = 10 * 60 * 1000
