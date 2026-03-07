@@ -165,7 +165,7 @@ func createMainWindow(runner Runner, sessionName string, startDir string) error 
 		return fmt.Errorf("creating right column split: %w", err)
 	}
 
-	if _, err := runner.Run("split-window", "-v", "-t", "="+mainTarget+".1", "-c", startDir); err != nil {
+	if _, err := runner.Run("split-window", "-v", "-t", "="+mainTarget+".1", "-c", startDir, "-p", "30"); err != nil {
 		return fmt.Errorf("creating bottom-right split: %w", err)
 	}
 

@@ -8,7 +8,7 @@ import (
 func TestEnsureMainSession_AlreadyExists(t *testing.T) {
 	runner := &FakeRunner{
 		Outputs: map[string]string{
-			"[has-session -t yakumo-main]": "",
+			"[has-session -t =yakumo-main]": "",
 		},
 	}
 
@@ -28,14 +28,14 @@ func TestEnsureMainSession_AlreadyExists(t *testing.T) {
 func TestEnsureMainSession_CreatesNew(t *testing.T) {
 	runner := &FakeRunner{
 		Errors: map[string]error{
-			"[has-session -t yakumo-main]": fmt.Errorf("session not found"),
+			"[has-session -t =yakumo-main]": fmt.Errorf("session not found"),
 		},
 		Outputs: map[string]string{},
 	}
 	// Allow new-session and send-keys to succeed (FakeRunner returns error for unknown keys,
 	// so we need to register them)
 	// The homeDir will vary, so we match broadly by checking calls instead
-	runner.Outputs["[has-session -t yakumo-main]"] = "" // won't be used because error takes precedence
+	runner.Outputs["[has-session -t =yakumo-main]"] = "" // won't be used because error takes precedence
 
 	// We need to allow the new-session call to succeed regardless of homeDir
 	// Use a custom approach: add a wildcard-like entry
@@ -45,7 +45,7 @@ func TestEnsureMainSession_CreatesNew(t *testing.T) {
 	runner2 := &flexFakeRunner{
 		allowPrefix: []string{"new-session", "send-keys"},
 		errors: map[string]error{
-			"[has-session -t yakumo-main]": fmt.Errorf("session not found"),
+			"[has-session -t =yakumo-main]": fmt.Errorf("session not found"),
 		},
 		outputs: map[string]string{},
 	}
@@ -74,7 +74,7 @@ func TestEnsureMainSession_CreatesNew(t *testing.T) {
 func TestEnsureMainSession_CreateError(t *testing.T) {
 	runner := &flexFakeRunner{
 		errors: map[string]error{
-			"[has-session -t yakumo-main]": fmt.Errorf("session not found"),
+			"[has-session -t =yakumo-main]": fmt.Errorf("session not found"),
 		},
 		failPrefix: []string{"new-session"},
 	}
@@ -127,7 +127,7 @@ func TestIsCurrentSession_Error(t *testing.T) {
 func TestSwitchToMainSession_Success(t *testing.T) {
 	runner := &FakeRunner{
 		Outputs: map[string]string{
-			"[has-session -t yakumo-main]":      "",
+			"[has-session -t =yakumo-main]":      "",
 			"[switch-client -t yakumo-main]":    "",
 		},
 	}
@@ -153,7 +153,7 @@ func TestSwitchToMainSession_Success(t *testing.T) {
 func TestSwitchToMainSession_CreatesAndSwitches(t *testing.T) {
 	runner := &flexFakeRunner{
 		errors: map[string]error{
-			"[has-session -t yakumo-main]": fmt.Errorf("session not found"),
+			"[has-session -t =yakumo-main]": fmt.Errorf("session not found"),
 		},
 		allowPrefix: []string{"new-session", "send-keys", "switch-client"},
 		outputs:     map[string]string{},
@@ -186,7 +186,7 @@ func TestSwitchToMainSession_CreatesAndSwitches(t *testing.T) {
 func TestSwitchToMainSession_SwitchError(t *testing.T) {
 	runner := &FakeRunner{
 		Outputs: map[string]string{
-			"[has-session -t yakumo-main]": "",
+			"[has-session -t =yakumo-main]": "",
 		},
 		Errors: map[string]error{
 			"[switch-client -t yakumo-main]": fmt.Errorf("switch failed"),
