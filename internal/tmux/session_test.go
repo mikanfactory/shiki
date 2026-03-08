@@ -361,7 +361,7 @@ func TestCreateMainWindow_Success(t *testing.T) {
 		Outputs: map[string]string{
 			"[rename-window -t =my-session:0 main-window]":                    "",
 			"[split-window -h -t =my-session:main-window -c /path -p 25]":    "",
-			"[split-window -v -t =my-session:main-window.1 -c /path -p 30]": "",
+			"[split-window -v -t =my-session:main-window.1 -c /path -p 70]": "",
 		},
 	}
 
@@ -413,7 +413,7 @@ func TestCreateMainWindow_SecondSplitError(t *testing.T) {
 			"[split-window -h -t =s:main-window -c /path -p 25]": "",
 		},
 		Errors: map[string]error{
-			"[split-window -v -t =s:main-window.1 -c /path -p 30]": fmt.Errorf("split failed"),
+			"[split-window -v -t =s:main-window.1 -c /path -p 70]": fmt.Errorf("split failed"),
 		},
 	}
 
@@ -511,7 +511,7 @@ func newFullSessionRunner(session string, dir string) *FakeRunner {
 			fmt.Sprintf("[new-session -d -s %s -c %s]", session, dir):                             "",
 			fmt.Sprintf("[rename-window -t =%s:0 main-window]", session):                            "",
 			fmt.Sprintf("[split-window -h -t =%s:main-window -c %s -p 25]", session, dir):            "",
-			fmt.Sprintf("[split-window -v -t =%s:main-window.1 -c %s -p 30]", session, dir):               "",
+			fmt.Sprintf("[split-window -v -t =%s:main-window.1 -c %s -p 70]", session, dir):               "",
 			fmt.Sprintf("[list-panes -t =%s:main-window -F #{pane_id}]", session):                   "%0\n%1\n%2\n",
 			fmt.Sprintf("[new-window -t =%s -n background-window -c %s]", session, dir):             "",
 			fmt.Sprintf("[split-window -v -t =%s:background-window -c %s]", session, dir):           "",
@@ -676,7 +676,7 @@ func TestSelectWorktreeSession_NewSession(t *testing.T) {
 			"[new-session -d -s feat -c /repos/feat]":                              "",
 			"[rename-window -t =feat:0 main-window]":                                "",
 			"[split-window -h -t =feat:main-window -c /repos/feat -p 25]":                 "",
-			"[split-window -v -t =feat:main-window.1 -c /repos/feat -p 30]":               "",
+			"[split-window -v -t =feat:main-window.1 -c /repos/feat -p 70]":               "",
 			"[list-panes -t =feat:main-window -F #{pane_id}]":                       "%0\n%1\n%2\n",
 			"[new-window -t =feat -n background-window -c /repos/feat]":             "",
 			"[split-window -v -t =feat:background-window -c /repos/feat]":           "",
@@ -722,7 +722,7 @@ func TestSelectWorktreeSession_SwitchAfterCreateError(t *testing.T) {
 			"[new-session -d -s feat -c /repos/feat]":                      "",
 			"[rename-window -t =feat:0 main-window]":                        "",
 			"[split-window -h -t =feat:main-window -c /repos/feat -p 25]":         "",
-			"[split-window -v -t =feat:main-window.1 -c /repos/feat -p 30]":       "",
+			"[split-window -v -t =feat:main-window.1 -c /repos/feat -p 70]":       "",
 			"[list-panes -t =feat:main-window -F #{pane_id}]":               "%0\n%1\n%2\n",
 			"[new-window -t =feat -n background-window -c /repos/feat]":     "",
 			"[split-window -v -t =feat:background-window -c /repos/feat]":   "",
