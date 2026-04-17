@@ -11,11 +11,16 @@ import (
 // correct session is resolved even when multiple tmux sessions exist.
 func CurrentSessionName(runner Runner) (string, error) {
 	args := []string{"display-message", "-p"}
-	if pane := os.Getenv("TMUX_PANE"); pane != "" {
+	pane := os.Getenv("TMUX_PANE")
+	if pane != "" {
 		args = append(args, "-t", pane)
 	}
 	args = append(args, "#{session_name}")
 	out, err := runner.Run(args...)
+	if err != nil && pane != "" {
+		// Fallback: retry without -t when $TMUX_PANE is stale
+		out, err = runner.Run("display-message", "-p", "#{session_name}")
+	}
 	if err != nil {
 		return "", fmt.Errorf("getting session name: %w", err)
 	}

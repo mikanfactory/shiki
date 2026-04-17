@@ -50,6 +50,42 @@ func TestCurrentSessionName(t *testing.T) {
 			t.Fatal("expected error, got nil")
 		}
 	})
+
+	t.Run("fallback when TMUX_PANE target fails", func(t *testing.T) {
+		t.Setenv("TMUX_PANE", "%9")
+		runner := &FakeRunner{
+			Outputs: map[string]string{
+				"[display-message -p #{session_name}]": "fallback-session\n",
+			},
+			Errors: map[string]error{
+				"[display-message -p -t %9 #{session_name}]": errors.New("server exited unexpectedly"),
+			},
+		}
+		name, err := CurrentSessionName(runner)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if name != "fallback-session" {
+			t.Errorf("expected %q, got %q", "fallback-session", name)
+		}
+		if len(runner.Calls) != 2 {
+			t.Errorf("expected 2 calls (targeted + fallback), got %d", len(runner.Calls))
+		}
+	})
+
+	t.Run("error when both targeted and fallback fail", func(t *testing.T) {
+		t.Setenv("TMUX_PANE", "%9")
+		runner := &FakeRunner{
+			Errors: map[string]error{
+				"[display-message -p -t %9 #{session_name}]": errors.New("server exited unexpectedly"),
+				"[display-message -p #{session_name}]":        errors.New("no current client"),
+			},
+		}
+		_, err := CurrentSessionName(runner)
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+	})
 }
 
 func TestSwapCenter(t *testing.T) {
