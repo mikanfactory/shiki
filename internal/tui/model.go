@@ -367,7 +367,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.addingWorktree = true
 						m.addingWorktreeRepoPath = item.RepoRootPath
 						m.err = nil
-						m.textInput.Placeholder = "URL to clone or Enter for new branch"
+						m.textInput.Placeholder = "URL, branch name, or Enter for new branch"
 						cmd := m.textInput.Focus()
 						return m, cmd
 					}
@@ -419,7 +419,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.addingWorktree = true
 					m.addingWorktreeRepoPath = item.RepoRootPath
 					m.err = nil
-					m.textInput.Placeholder = "URL to clone or Enter for new branch"
+					m.textInput.Placeholder = "URL, branch name, or Enter for new branch"
 					cmd := m.textInput.Focus()
 					return m, cmd
 				}
@@ -555,11 +555,12 @@ func (m Model) updateAddWorktreeMode(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.err = nil
 			repoName := repoNameFromConfig(m.config, m.addingWorktreeRepoPath)
 			if input == "" {
-				// Empty input: create worktree with random branch name
 				return m, addWorktreeCmd(m.runner, m.addingWorktreeRepoPath, m.config.WorktreeBasePath, repoName, m.config.DefaultBaseRef)
 			}
-			// URL input: clone from URL
-			return m, addWorktreeFromURLCmd(m.runner, m.ghRunner, m.addingWorktreeRepoPath, m.config.WorktreeBasePath, repoName, input)
+			if strings.HasPrefix(input, "http://") || strings.HasPrefix(input, "https://") {
+				return m, addWorktreeFromURLCmd(m.runner, m.ghRunner, m.addingWorktreeRepoPath, m.config.WorktreeBasePath, repoName, input)
+			}
+			return m, addWorktreeFromBranchNameCmd(m.runner, m.addingWorktreeRepoPath, m.config.WorktreeBasePath, repoName, input)
 		case tea.KeyCtrlC:
 			m.quitting = true
 			return m, tea.Quit
@@ -738,26 +739,36 @@ func addWorktreeFromURLCmd(runner git.CommandRunner, ghRunner github.Runner, rep
 			branch = prBranch
 		}
 
-		if err := git.FetchBranch(runner, repoPath, branch); err != nil {
-			return WorktreeAddErrMsg{Err: fmt.Errorf("fetching branch %q: %w", branch, err)}
-		}
+		return createWorktreeFromBranch(runner, repoPath, basePath, repoName, branch)
+	}
+}
 
-		slug := github.BranchSlug(branch)
-		newPath := filepath.Join(basePath, repoName, slug)
+func addWorktreeFromBranchNameCmd(runner git.CommandRunner, repoPath, basePath, repoName, branch string) tea.Cmd {
+	return func() tea.Msg {
+		return createWorktreeFromBranch(runner, repoPath, basePath, repoName, branch)
+	}
+}
 
-		if err := os.MkdirAll(filepath.Dir(newPath), 0o755); err != nil {
-			return WorktreeAddErrMsg{Err: fmt.Errorf("creating parent directory: %w", err)}
-		}
+func createWorktreeFromBranch(runner git.CommandRunner, repoPath, basePath, repoName, branch string) tea.Msg {
+	if err := git.FetchBranch(runner, repoPath, branch); err != nil {
+		return WorktreeAddErrMsg{Err: fmt.Errorf("fetching branch %q: %w", branch, err)}
+	}
 
-		if err := git.AddWorktreeFromBranch(runner, repoPath, newPath, branch); err != nil {
-			return WorktreeAddErrMsg{Err: fmt.Errorf("creating worktree: %w", err)}
-		}
+	slug := github.BranchSlug(branch)
+	newPath := filepath.Join(basePath, repoName, slug)
 
-		return WorktreeAddedMsg{
-			WorktreePath: newPath,
-			Branch:       branch,
-			CreatedAt:    time.Now().UnixMilli(),
-		}
+	if err := os.MkdirAll(filepath.Dir(newPath), 0o755); err != nil {
+		return WorktreeAddErrMsg{Err: fmt.Errorf("creating parent directory: %w", err)}
+	}
+
+	if err := git.AddWorktreeFromBranch(runner, repoPath, newPath, branch); err != nil {
+		return WorktreeAddErrMsg{Err: fmt.Errorf("creating worktree: %w", err)}
+	}
+
+	return WorktreeAddedMsg{
+		WorktreePath: newPath,
+		Branch:       branch,
+		CreatedAt:    time.Now().UnixMilli(),
 	}
 }
 
