@@ -10,6 +10,16 @@ import (
 	"github.com/mikanfactory/yakumo/internal/model"
 )
 
+const (
+	workspacesTitle = "Workspaces"
+	workspacesHelp  = "q: quit  ↑↓/jk: move  enter/click: select  d: archive"
+)
+
+// reservedRows is the chrome height (title + spacer + help). The title and
+// help styles are static, so this is computed once at package init rather than
+// re-rendered on every frame.
+var reservedRows = lipgloss.Height(titleStyle.Render(workspacesTitle)) + 1 + lipgloss.Height(helpStyle.Render(workspacesHelp))
+
 func (m Model) View() string {
 	if m.quitting {
 		return ""
@@ -32,52 +42,68 @@ func (m Model) View() string {
 	}
 
 	if m.loading {
-		return titleStyle.Render("Workspaces") + "\n\n  Loading..."
+		return titleStyle.Render(workspacesTitle) + "\n\n  Loading..."
 	}
 
 	if m.err != nil {
-		return titleStyle.Render("Workspaces") + "\n\n  Error: " + m.err.Error()
+		return titleStyle.Render(workspacesTitle) + "\n\n  Error: " + m.err.Error()
 	}
 
-	title := titleStyle.Render("Workspaces")
-	help := helpStyle.Render("q: quit  ↑↓/jk: move  enter/click: select  d: archive")
+	title := titleStyle.Render(workspacesTitle)
+	help := helpStyle.Render(workspacesHelp)
 
-	// When height is unset (zero), render every item — we don't yet know
-	// the terminal size so truncating would be premature.
-	viewportHeight := len(m.items)
-	if m.height > 0 {
-		// +1 for the explicit spacer newline written between title and items.
-		reserved := lipgloss.Height(title) + 1 + lipgloss.Height(help)
-		viewportHeight = m.height - reserved
-		if viewportHeight < 1 {
-			viewportHeight = 1
-		}
-	}
-	scrollOff := adjustScroll(m.cursor, 0, viewportHeight, len(m.items))
-	end := scrollOff + viewportHeight
-	if end > len(m.items) {
-		end = len(m.items)
-	}
+	vp := viewportHeight(m.height)
 
 	var b strings.Builder
-
 	b.WriteString(title)
 	b.WriteString("\n")
 
-	for i := scrollOff; i < end; i++ {
+	used := 0
+	for i := m.scrollOff; i < len(m.items); i++ {
 		item := m.items[i]
 		isSelected := i == m.cursor
 		line := renderItem(item, isSelected, m.sidebarWidth)
+		h := lipgloss.Height(line)
+		if vp > 0 && used+h > vp {
+			break
+		}
 		if item.Selectable {
 			line = zone.Mark(ZoneID(i), line)
 		}
 		b.WriteString(line)
 		b.WriteString("\n")
+		used += h
 	}
 
 	b.WriteString(help)
 
 	return zone.Scan(b.String())
+}
+
+// viewportHeight returns the rows available for the items section given the
+// full terminal height. Returns 0 as a sentinel meaning "size unknown — render
+// every item" so the first frames before WindowSizeMsg arrives still work.
+func viewportHeight(termHeight int) int {
+	if termHeight <= 0 {
+		return 0
+	}
+	h := termHeight - reservedRows
+	if h < 1 {
+		return 1
+	}
+	return h
+}
+
+// itemHeights returns the rendered terminal-row count for each item. Heights
+// vary by Kind (action rows have PaddingTop) so callers must use this rather
+// than assuming 1 row per item.
+func itemHeights(items []model.NavigableItem, cursor, sidebarWidth int) []int {
+	heights := make([]int, len(items))
+	for i, item := range items {
+		line := renderItem(item, i == cursor, sidebarWidth)
+		heights[i] = lipgloss.Height(line)
+	}
+	return heights
 }
 
 func renderItem(item model.NavigableItem, selected bool, width int) string {

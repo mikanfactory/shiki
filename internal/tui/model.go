@@ -114,6 +114,7 @@ type Model struct {
 	cursor                 int
 	sidebarWidth           int
 	height                 int
+	scrollOff              int
 	selected               string
 	selectedRepoPath       string
 	quitting               bool
@@ -203,6 +204,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// modal-mode dispatch so resize events are honored even during modals.
 	if sizeMsg, ok := msg.(tea.WindowSizeMsg); ok {
 		m.height = sizeMsg.Height
+		m = recomputeScroll(m)
 		return m, nil
 	}
 
@@ -227,6 +229,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.groups = msg.Groups
 		m.items = sidebar.BuildItems(msg.Groups)
 		m.cursor = FirstSelectable(m.items)
+		m.scrollOff = 0
+		m = recomputeScroll(m)
 		m.loading = false
 		if !m.agentTickRunning {
 			m.agentTickRunning = true
@@ -367,6 +371,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				if zone.Get(ZoneID(i)).InBounds(msg) {
 					m.cursor = i
+					m = recomputeScroll(m)
 					if item.Kind == model.ItemKindWorktree {
 						m.selected = item.WorktreePath
 						m.selectedRepoPath = item.RepoRootPath
@@ -401,9 +406,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "up", "k":
 			m.cursor = PrevSelectable(m.items, m.cursor)
+			m = recomputeScroll(m)
 
 		case "down", "j":
 			m.cursor = NextSelectable(m.items, m.cursor)
+			m = recomputeScroll(m)
 
 		case "d":
 			if m.cursor < len(m.items) {
