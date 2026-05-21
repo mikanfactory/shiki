@@ -7,23 +7,18 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
-	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	zone "github.com/lrstanley/bubblezone"
 
-	"github.com/mikanfactory/yakumo/internal/branchname"
 	"github.com/mikanfactory/yakumo/internal/claude"
 	"github.com/mikanfactory/yakumo/internal/config"
 	"github.com/mikanfactory/yakumo/internal/diffui"
 	"github.com/mikanfactory/yakumo/internal/git"
 	"github.com/mikanfactory/yakumo/internal/github"
 	"github.com/mikanfactory/yakumo/internal/model"
-	"github.com/mikanfactory/yakumo/internal/rename"
 	"github.com/mikanfactory/yakumo/internal/setupspinner"
-	"github.com/mikanfactory/yakumo/internal/timeparse"
 	"github.com/mikanfactory/yakumo/internal/tmux"
 	"github.com/mikanfactory/yakumo/internal/tui"
 )
@@ -35,7 +30,6 @@ Commands:
   diff-ui           Launch diff/PR review UI
   swap-center       Swap center pane with background
   swap-right-below  Swap right-below pane with background
-  watch-rename      Watch for Claude prompt and rename branch
 
 Flags (worktree UI only):
   --config <path>   Path to config file
@@ -54,8 +48,6 @@ func main() {
 		runSwapCenter()
 	case "swap-right-below":
 		runSwapRightBelow()
-	case "watch-rename":
-		runWatchRename()
 	case "--diff":
 		fmt.Fprintln(os.Stderr, "Warning: --diff is deprecated, use 'yakumo diff-ui' instead")
 		runDiffUI()
@@ -143,21 +135,7 @@ func runWorktreeUI(configPath string) {
 		ghRunner = github.OSRunner{}
 	}
 
-	var claudeReader claude.Reader
-	var branchNameGen branchname.Generator
-
-	if claudePath, err := exec.LookPath("claude"); err == nil {
-		if home, err := os.UserHomeDir(); err == nil {
-			claudeReader = claude.OSReader{
-				HistoryPath: filepath.Join(home, ".claude", "history.jsonl"),
-			}
-			branchNameGen = branchname.CLIGenerator{
-				ClaudePath: claudePath,
-			}
-		}
-	}
-
-	m := tui.NewModel(cfg, runner, resolvedConfigPath, tmuxRunner, ghRunner, claudeReader, branchNameGen)
+	m := tui.NewModel(cfg, runner, resolvedConfigPath, tmuxRunner, ghRunner)
 
 	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	result, err := p.Run()
@@ -247,25 +225,6 @@ func runSessionSetup(prog *tea.Program, cfg model.Config, finalModel tui.Model, 
 		}
 	}
 
-	// Launch rename watcher in a tmux background pane
-	if renameInfo := finalModel.PendingRename(selected); renameInfo != nil {
-		targetPane := ""
-		if layout.BottomRight2.PaneID != "" {
-			targetPane = layout.BottomRight2.PaneID
-		} else {
-			paneID, err := findIdleBackgroundPane(tmuxRunner, layout.SessionName)
-			if err == nil {
-				targetPane = paneID
-			}
-		}
-		if targetPane != "" {
-			if err := launchRenameWatcher(tmuxRunner, targetPane,
-				selected, renameInfo.OriginalBranch, layout.SessionName, renameInfo.CreatedAt); err != nil {
-				log.Printf("[branch-rename] watcher launch failed: %v", err)
-			}
-		}
-	}
-
 	prog.Send(setupspinner.DoneMsg{})
 }
 
@@ -301,69 +260,6 @@ func diffUICommand() string {
 	return exe + " diff-ui"
 }
 
-type watchRenameArgs struct {
-	wtPath      string
-	branch      string
-	createdAt   int64
-	sessionName string
-}
-
-func resolveWatchRenameArgs(
-	rawPath, rawBranch, rawCreatedAt, rawSessionName string,
-	gitRunner git.CommandRunner,
-	tmuxRunner tmux.Runner,
-	getwd func() (string, error),
-	nowMilli func() int64,
-) (watchRenameArgs, error) {
-	var args watchRenameArgs
-
-	// Resolve path
-	if rawPath != "" {
-		args.wtPath = rawPath
-	} else {
-		wd, err := getwd()
-		if err != nil {
-			return args, fmt.Errorf("resolving working directory: %w", err)
-		}
-		args.wtPath = wd
-	}
-
-	// Resolve created-at
-	if rawCreatedAt != "" {
-		v, err := timeparse.ParseCreatedAt(rawCreatedAt, time.Now())
-		if err != nil {
-			return args, fmt.Errorf("invalid --created-at: %w", err)
-		}
-		args.createdAt = v
-	} else {
-		args.createdAt = nowMilli()
-	}
-
-	// Resolve branch (depends on resolved path)
-	if rawBranch != "" {
-		args.branch = rawBranch
-	} else {
-		out, err := gitRunner.Run(args.wtPath, "symbolic-ref", "--short", "HEAD")
-		if err != nil {
-			return args, fmt.Errorf("resolving branch: %w", err)
-		}
-		args.branch = strings.TrimSpace(out)
-	}
-
-	// Resolve session-name
-	if rawSessionName != "" {
-		args.sessionName = rawSessionName
-	} else if tmuxRunner != nil {
-		name, err := tmux.CurrentSessionName(tmuxRunner)
-		if err != nil {
-			return args, fmt.Errorf("resolving tmux session: %w", err)
-		}
-		args.sessionName = name
-	}
-
-	return args, nil
-}
-
 func resolveBaseRef() string {
 	baseRef := config.DefaultBaseRef
 	path, err := config.ResolveConfigPath("")
@@ -378,118 +274,6 @@ func resolveBaseRef() string {
 		baseRef = cfg.DefaultBaseRef
 	}
 	return baseRef
-}
-
-func runWatchRename() {
-	setupDebugLog()
-
-	fs := flag.NewFlagSet("watch-rename", flag.ExitOnError)
-	wtPath := fs.String("path", "", "absolute path to the worktree (default: current directory)")
-	branch := fs.String("branch", "", "original branch name (default: current git branch)")
-	createdAtStr := fs.String("created-at", "", "unix millisecond timestamp or relative duration (e.g., 10m, 1h) (default: now)")
-	sessionName := fs.String("session-name", "", "tmux session name (default: current tmux session)")
-	fs.Parse(os.Args[2:])
-
-	runner := git.OSCommandRunner{}
-
-	var tmuxRunner tmux.Runner
-	if tmux.IsInsideTmux() {
-		tmuxRunner = tmux.OSRunner{}
-	}
-
-	resolved, err := resolveWatchRenameArgs(
-		*wtPath, *branch, *createdAtStr, *sessionName,
-		runner, tmuxRunner,
-		os.Getwd, func() int64 { return time.Now().UnixMilli() },
-	)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
-	}
-
-	home, err := os.UserHomeDir()
-	if err != nil {
-		os.Exit(1)
-	}
-
-	claudePath, err := exec.LookPath("claude")
-	if err != nil {
-		os.Exit(1)
-	}
-
-	reader := claude.OSReader{
-		HistoryPath: filepath.Join(home, ".claude", "history.jsonl"),
-	}
-	gen := branchname.CLIGenerator{ClaudePath: claudePath}
-
-	cfg := rename.WatcherConfig{
-		WorktreePath: resolved.wtPath,
-		Branch:       resolved.branch,
-		SessionName:  resolved.sessionName,
-		CreatedAt:    resolved.createdAt,
-		PollInterval: 2 * time.Second,
-		Timeout:      10 * time.Minute,
-	}
-
-	// Create logger that writes to both stdout (visible in tmux pane) and debug.log
-	logger := log.New(os.Stdout, "", log.Ldate|log.Ltime|log.Lmicroseconds)
-
-	w := rename.NewWatcher(cfg, reader, gen, runner, tmuxRunner)
-	w.SetLogger(logger)
-	if err := w.Run(); err != nil {
-		logger.Printf("[branch-rename] watcher exited with error: %v", err)
-		os.Exit(1)
-	}
-	logger.Printf("[branch-rename] watcher completed successfully")
-}
-
-// launchRenameWatcher sends the watch-rename command to a tmux pane via SendKeys.
-func launchRenameWatcher(runner tmux.Runner, paneID, worktreePath, branch, sessionName string, createdAt int64) error {
-	exe, err := os.Executable()
-	if err != nil {
-		return fmt.Errorf("resolving executable: %w", err)
-	}
-
-	cmd := fmt.Sprintf("%s watch-rename --path %s --branch %s --created-at %s --session-name %s",
-		shellEscape(exe),
-		shellEscape(worktreePath),
-		shellEscape(branch),
-		strconv.FormatInt(createdAt, 10),
-		shellEscape(sessionName),
-	)
-
-	return tmux.SendKeys(runner, paneID, cmd)
-}
-
-// findIdleBackgroundPane returns the pane ID of an idle shell pane in the background window.
-func findIdleBackgroundPane(runner tmux.Runner, sessionName string) (string, error) {
-	target := sessionName + ":background-window"
-	out, err := runner.Run("list-panes", "-t", target, "-F", "#{pane_id}\t#{pane_current_command}")
-	if err != nil {
-		return "", fmt.Errorf("listing background panes: %w", err)
-	}
-
-	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		parts := strings.SplitN(line, "\t", 2)
-		if len(parts) != 2 {
-			continue
-		}
-		cmd := strings.ToLower(parts[1])
-		if cmd == "zsh" || cmd == "bash" || cmd == "fish" || cmd == "sh" {
-			return parts[0], nil
-		}
-	}
-
-	return "", fmt.Errorf("no idle background pane found in session %s", sessionName)
-}
-
-// shellEscape wraps a string in single quotes for safe shell usage.
-func shellEscape(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }
 
 func findRepoByPath(cfg model.Config, repoPath string) model.RepositoryDef {
